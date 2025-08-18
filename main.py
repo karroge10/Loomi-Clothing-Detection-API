@@ -10,6 +10,7 @@ from sklearn.cluster import KMeans
 import cv2
 import tempfile
 import os
+import torch
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
@@ -25,7 +26,8 @@ def read_root():
             "/", "/upload", "/health", "/resize", "/convert", 
             "/colors", "/colors/advanced", 
             "/clothing/simple", "/clothing/analyze",
-            "/clothing/simple/download", "/clothing/analyze/download"
+            "/clothing/simple/download", "/clothing/analyze/download",
+            "/clothing/ml"
         ]
     }
 
@@ -557,3 +559,110 @@ async def analyze_clothing_with_colors_download(
     except Exception as e:
         logger.error(f"Error in clothing analysis: {e}")
         raise HTTPException(status_code=500, detail=f"Error in clothing analysis: {str(e)}")
+
+@app.post("/clothing/ml")
+async def ml_clothing_detection(
+    file: UploadFile = File(...)
+):
+    """ML-based clothing detection using transformers and proper segmentation."""
+    try:
+        if not file.content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail="File must be an image")
+        
+        image_bytes = await file.read()
+        
+        # Load image with PIL
+        image = Image.open(BytesIO(image_bytes))
+        
+        # Convert to RGB if needed
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+        
+        # Load the clothing segmentation model
+        from transformers import SegformerImageProcessor, AutoModelForSemanticSegmentation
+        
+        processor = SegformerImageProcessor.from_pretrained("mattmdjaga/segformer_b2_clothes")
+        model = AutoModelForSemanticSegmentation.from_pretrained("mattmdjaga/segformer_b2_clothes")
+        
+        # Prepare inputs
+        inputs = processor(images=image, return_tensors="pt")
+        
+        # Run inference
+        with torch.no_grad():
+            outputs = model(**inputs)
+            logits = outputs.logits.cpu()
+        
+        # Get predicted segmentation
+        pred_seg = logits.argmax(dim=1)[0].numpy()
+        
+        # Clothing labels mapping
+        clothing_labels = {
+            0: "Background",
+            1: "Hat", 
+            2: "Hair",
+            3: "Sunglasses",
+            4: "Upper-clothes",
+            5: "Skirt",
+            6: "Pants",
+            7: "Dress",
+            8: "Belt",
+            9: "Left-shoe",
+            10: "Right-shoe",
+            11: "Face",
+            12: "Left-leg",
+            13: "Right-leg",
+            14: "Left-arm",
+            15: "Right-arm",
+            16: "Bag",
+            17: "Scarf"
+        }
+        
+        # Clothing classes (exclude body parts and background)
+        clothing_classes = [4, 5, 6, 7, 8, 9, 10, 16, 17]
+        
+        # Create clothing mask
+        clothing_mask = np.isin(pred_seg, clothing_classes)
+        
+        # Convert to OpenCV format for processing
+        cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+        
+        # Apply mask to get clothing-only image
+        clothing_only = cv_image.copy()
+        clothing_only[~clothing_mask] = [0, 0, 0]  # Set non-clothing to black
+        
+        # Convert back to PIL for saving
+        clothing_only_rgb = cv2.cvtColor(clothing_only, cv2.COLOR_BGR2RGB)
+        clothing_pil = Image.fromarray(clothing_only_rgb)
+        
+        # Save to temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_file:
+            clothing_pil.save(tmp_file.name, format="PNG")
+            tmp_file_path = tmp_file.name
+        
+        # Calculate statistics
+        total_pixels = clothing_mask.shape[0] * clothing_mask.shape[1]
+        clothing_pixels = np.sum(clothing_mask)
+        clothing_percentage = (clothing_pixels / total_pixels * 100).round(2)
+        
+        # Count detected clothing types
+        detected_clothing = {}
+        for class_id in clothing_classes:
+            if class_id in pred_seg:
+                count = np.sum(pred_seg == class_id)
+                if count > 0:
+                    detected_clothing[clothing_labels[class_id]] = {
+                        "pixels": int(count),
+                        "percentage": round((count / total_pixels * 100), 2)
+                    }
+        
+        # Return file for download
+        return FileResponse(
+            tmp_file_path,
+            media_type="image/png",
+            filename=f"ml_clothing_detected_{file.filename}",
+            background=lambda: os.unlink(tmp_file_path)  # Clean up after sending
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in ML clothing detection: {e}")
+        raise HTTPException(status_code=500, detail=f"Error in ML clothing detection: {str(e)}")

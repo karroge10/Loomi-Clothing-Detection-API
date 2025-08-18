@@ -5,3 +5,6 @@ python-multipart
 numpy
 scikit-learn
 opencv-python-headless
+transformers
+torch
+torchvision
