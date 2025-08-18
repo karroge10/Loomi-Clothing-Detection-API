@@ -8,3 +8,5 @@ opencv-python-headless
 transformers
 torch
 torchvision
+rembg
+onnxruntime

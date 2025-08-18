@@ -179,20 +179,46 @@ class ClothingDetector:
                 reverse=True
             ))
             
+            # Convert to the format expected by the API
+            clothing_instances = []
+            for label_name, stats in sorted_clothing.items():
+                if label_name in coordinates:
+                    coord = coordinates[label_name]
+                    clothing_instances.append({
+                        "type": label_name,
+                        "class_id": next(class_id for class_id, name in self.labels.items() if name == label_name),
+                        "bbox": {
+                            "x": coord["x_min"],
+                            "y": coord["y_min"], 
+                            "width": coord["width"],
+                            "height": coord["height"]
+                        },
+                        "area_pixels": stats["pixels"],
+                        "area_percentage": stats["percentage"]
+                    })
+            
             return {
-                "clothing_types": sorted_clothing,
-                "coordinates": coordinates,
+                "message": f"Clothing detection completed. Found {len(sorted_clothing)} items",
                 "total_detected": len(sorted_clothing),
-                "main_clothing": list(sorted_clothing.keys())[:3] if sorted_clothing else []
+                "clothing_instances": clothing_instances,
+                "image_info": {
+                    "width": image.width,
+                    "height": image.height,
+                    "total_pixels": image.width * image.height
+                }
             }
             
         except Exception as e:
             logger.error(f"Error in clothing detection: {str(e)}")
             return {
-                "clothing_types": {},
-                "coordinates": {},
+                "message": "Error in clothing detection",
                 "total_detected": 0,
-                "main_clothing": [],
+                "clothing_instances": [],
+                "image_info": {
+                    "width": 0,
+                    "height": 0,
+                    "total_pixels": 0
+                },
                 "error": str(e)
             }
     
