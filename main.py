@@ -28,7 +28,7 @@ def read_root():
             "/colors", "/colors/advanced", 
             "/clothing/simple", "/clothing/analyze",
             "/clothing/simple/download", "/clothing/analyze/download",
-            "/clothing/ml", "/clothing", "/analyze"
+            "/clothing/ml", "/clothing", "/analyze", "/analyze/download"
         ]
     }
 
@@ -738,3 +738,52 @@ async def analyze_image(
     except Exception as e:
         logger.error(f"Error in clothing analysis: {e}")
         raise HTTPException(status_code=500, detail=f"Error in clothing analysis: {str(e)}")
+
+@app.post("/analyze/download")
+async def analyze_image_download(
+    file: UploadFile = File(...),
+    selected_clothing: Optional[str] = Form(None)
+):
+    """
+    Download clothing-only image with transparent background.
+    
+    - selected_clothing: Optional clothing type to focus on
+    - Returns: PNG file with transparent background
+    """
+    try:
+        if not file.content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail="File must be an image")
+        
+        image_bytes = await file.read()
+        
+        # Use the proper clothing detector from clothing_detector.py
+        from clothing_detector import create_clothing_only_image
+        
+        # Create clothing-only image
+        clothing_only_image = create_clothing_only_image(image_bytes, selected_clothing)
+        
+        if not clothing_only_image:
+            raise HTTPException(status_code=500, detail="Failed to create clothing-only image")
+        
+        # Decode base64 image
+        if clothing_only_image.startswith("data:image"):
+            base64_data = clothing_only_image.split(",", 1)[1]
+        else:
+            base64_data = clothing_only_image
+            
+        image_data = base64.b64decode(base64_data)
+        
+        # Create filename
+        filename = f"clothing_analyzed_{selected_clothing or 'all'}_{file.filename}"
+        if not filename.endswith('.png'):
+            filename = filename.rsplit('.', 1)[0] + '.png'
+        
+        return Response(
+            content=image_data,
+            media_type="image/png",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in clothing analysis download: {e}")
+        raise HTTPException(status_code=500, detail=f"Error in clothing analysis download: {str(e)}")
