@@ -5,6 +5,7 @@ from io import BytesIO
 import logging
 import base64
 import numpy as np
+from sklearn.cluster import KMeans
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
@@ -16,7 +17,7 @@ app = FastAPI(title="Clothing Detection API", description="Image processing API 
 def read_root():
     return {
         "Hello": "World!", 
-        "endpoints": ["/", "/upload", "/health", "/resize", "/convert", "/colors"]
+        "endpoints": ["/", "/upload", "/health", "/resize", "/convert", "/colors", "/colors/advanced"]
     }
 
 @app.get("/health")
@@ -163,3 +164,82 @@ async def analyze_colors(file: UploadFile = File(...)):
     except Exception as e:
         logger.error(f"Error analyzing colors: {e}")
         raise HTTPException(status_code=500, detail=f"Error analyzing colors: {str(e)}")
+
+@app.post("/colors/advanced")
+async def advanced_color_analysis(
+    file: UploadFile = File(...),
+    num_colors: int = Form(5)
+):
+    """Advanced color analysis using K-means clustering to find dominant colors."""
+    try:
+        if not file.content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail="File must be an image")
+        
+        image_bytes = await file.read()
+        image = Image.open(BytesIO(image_bytes))
+        
+        # Convert to RGB if needed
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+        
+        # Resize image for faster processing (optional)
+        image_small = image.resize((150, 150), Image.Resampling.LANCZOS)
+        
+        # Convert to numpy array and reshape for clustering
+        img_array = np.array(image_small)
+        pixels = img_array.reshape(-1, 3)
+        
+        # Apply K-means clustering
+        kmeans = KMeans(n_clusters=num_colors, n_init='auto', random_state=42)
+        kmeans.fit(pixels)
+        
+        # Get cluster centers (dominant colors)
+        dominant_colors = kmeans.cluster_centers_.astype(int)
+        
+        # Count pixels in each cluster
+        labels = kmeans.labels_
+        color_counts = np.bincount(labels)
+        
+        # Sort colors by frequency (most common first)
+        sorted_indices = np.argsort(color_counts)[::-1]
+        dominant_colors = dominant_colors[sorted_indices]
+        color_counts = color_counts[sorted_indices]
+        
+        # Calculate percentages
+        total_pixels = len(pixels)
+        color_percentages = (color_counts / total_pixels * 100).round(2)
+        
+        # Format results
+        color_results = []
+        for i, (color, count, percentage) in enumerate(zip(dominant_colors, color_counts, color_percentages)):
+            r, g, b = color
+            color_results.append({
+                "rank": i + 1,
+                "rgb": [int(r), int(g), int(b)],
+                "hex": f"#{r:02x}{g:02x}{b:02x}",
+                "percentage": float(percentage),
+                "pixel_count": int(count)
+            })
+        
+        # Get the most dominant color
+        most_dominant = color_results[0]
+        
+        return JSONResponse({
+            "message": f"Advanced color analysis completed with {num_colors} dominant colors",
+            "most_dominant_color": {
+                "rgb": most_dominant["rgb"],
+                "hex": most_dominant["hex"],
+                "percentage": most_dominant["percentage"]
+            },
+            "all_dominant_colors": color_results,
+            "image_info": {
+                "original_dimensions": {"width": image.width, "height": image.height},
+                "processed_dimensions": {"width": 150, "height": 150},
+                "total_pixels_analyzed": total_pixels
+            },
+            "note": "Colors are sorted by frequency. Next step: clothing segmentation!"
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in advanced color analysis: {e}")
+        raise HTTPException(status_code=500, detail=f"Error in advanced color analysis: {str(e)}")
