@@ -3,7 +3,7 @@
 
 FROM python:3.9
 
-# Install system dependencies for OpenCV
+# Install essential system dependencies for OpenCV
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
@@ -13,12 +13,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     libgthread-2.0-0 \
     libgtk-3-0 \
-    libavcodec-extra \
-    libavformat-dev \
-    libswscale-dev \
-    libv4l-0 \
-    libxvidcore4 \
-    libx264-163 \
     libjpeg62-turbo-dev \
     libpng16-16 \
     libtiff6 \
