@@ -1,9 +1,2 @@
 fastapi
 uvicorn[standard]
-pillow
-numpy
-transformers
-torch
-torchvision
-scikit-learn
-python-multipart
