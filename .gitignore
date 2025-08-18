@@ -1,10 +1,4 @@
-# Virtual Environment
-.venv/
-venv/
-env/
-ENV/
-
-# Python cache
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -27,8 +21,14 @@ wheels/
 *.egg
 MANIFEST
 
-# Old files directory
-old_files/
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
 
 # IDE
 .vscode/
@@ -50,36 +50,35 @@ Thumbs.db
 *.log
 logs/
 
-# Environment variables
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+# Cache
+cache/
+*.cache
+.hf_cache/
 
-# Temporary files
-*.tmp
-*.temp
+# Results and temporary files
+results/
 temp/
 tmp/
+*.tmp
 
-# Model files (if any)
-*.pth
-*.pt
-*.onnx
-*.bin
+# Test files
+test_*.py
+*_test.py
+test_image.jpg
 
-# Jupyter Notebook
-.ipynb_checkpoints
+# Documentation (keep only main README)
+README_RU.md
+demo.html
 
-# Coverage reports
-htmlcov/
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
-.pytest_cache/
+# Environment files (will be set in HF)
+.env
+.env.local
+.env.production
+
+# Docker
+.dockerignore
+
+# HF specific
+.hf_cache/
+transformers_cache/
+datasets_cache/

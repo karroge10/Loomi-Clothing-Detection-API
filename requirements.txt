@@ -1,12 +1,28 @@
+# Core FastAPI dependencies
 fastapi
 uvicorn[standard]
-pillow
 python-multipart
-numpy
-scikit-learn
+
+# Image processing
+pillow
 opencv-python-headless
+rembg
+
+# Machine Learning
 transformers
 torch
 torchvision
-rembg
 onnxruntime
+
+# Data processing
+numpy
+scikit-learn
+
+# Configuration and utilities
+python-dotenv
+
+# Optional dependencies (uncomment if needed)
+# redis          # For Redis caching
+# celery        # For task queue
+# prometheus-client  # For metrics
+# structlog     # For structured logging
