@@ -578,6 +578,9 @@ async def ml_clothing_detection(
         if image.mode != "RGB":
             image = image.convert("RGB")
         
+        # Store original dimensions
+        original_width, original_height = image.size
+        
         # Load the clothing segmentation model
         from transformers import SegformerImageProcessor, AutoModelForSemanticSegmentation
         
@@ -622,6 +625,12 @@ async def ml_clothing_detection(
         
         # Create clothing mask
         clothing_mask = np.isin(pred_seg, clothing_classes)
+        
+        # Resize mask to original image dimensions
+        from PIL import Image as PILImage
+        mask_pil = PILImage.fromarray(clothing_mask.astype(np.uint8) * 255)
+        mask_resized = mask_pil.resize((original_width, original_height), PILImage.NEAREST)
+        clothing_mask = np.array(mask_resized) > 0
         
         # Convert to OpenCV format for processing
         cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
