@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse, Response
+from fastapi.responses import StreamingResponse
 from PIL import Image
 from io import BytesIO
 import logging
@@ -7,6 +8,8 @@ import base64
 import numpy as np
 from sklearn.cluster import KMeans
 import cv2
+import tempfile
+import os
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
@@ -18,7 +21,12 @@ app = FastAPI(title="Clothing Detection API", description="Image processing API 
 def read_root():
     return {
         "Hello": "World!", 
-        "endpoints": ["/", "/upload", "/health", "/resize", "/convert", "/colors", "/colors/advanced", "/clothing/simple", "/clothing/analyze"]
+        "endpoints": [
+            "/", "/upload", "/health", "/resize", "/convert", 
+            "/colors", "/colors/advanced", 
+            "/clothing/simple", "/clothing/analyze",
+            "/clothing/simple/download", "/clothing/analyze/download"
+        ]
     }
 
 @app.get("/health")
@@ -431,6 +439,120 @@ async def analyze_clothing_with_colors(
             },
             "note": "Colors analyzed only on detected clothing areas. ML segmentation next!"
         })
+        
+    except Exception as e:
+        logger.error(f"Error in clothing analysis: {e}")
+        raise HTTPException(status_code=500, detail=f"Error in clothing analysis: {str(e)}")
+
+@app.post("/clothing/simple/download")
+async def simple_clothing_detection_download(
+    file: UploadFile = File(...),
+    threshold: float = Form(0.1)
+):
+    """Simple clothing detection - returns downloadable image."""
+    try:
+        if not file.content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail="File must be an image")
+        
+        image_bytes = await file.read()
+        
+        # Convert PIL to OpenCV format
+        pil_image = Image.open(BytesIO(image_bytes))
+        cv_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+        
+        # Convert to HSV for better color segmentation
+        hsv = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
+        
+        # Create mask for non-background areas
+        lower_bound = np.array([0, 0, int(255 * threshold)])
+        upper_bound = np.array([180, 255, 255])
+        
+        mask = cv2.inRange(hsv, lower_bound, upper_bound)
+        
+        # Apply morphological operations to clean up the mask
+        kernel = np.ones((5,5), np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        
+        # Find contours
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        # Filter contours by area
+        min_area = (cv_image.shape[0] * cv_image.shape[1]) * 0.01  # 1% of image
+        valid_contours = [c for c in contours if cv2.contourArea(c) > min_area]
+        
+        # Create clothing-only image
+        clothing_mask = np.zeros_like(mask)
+        cv2.drawContours(clothing_mask, valid_contours, -1, 255, -1)
+        
+        # Apply mask to original image
+        clothing_only = cv2.bitwise_and(cv_image, cv_image, mask=clothing_mask)
+        
+        # Convert back to PIL for saving
+        clothing_only_rgb = cv2.cvtColor(clothing_only, cv2.COLOR_BGR2RGB)
+        clothing_pil = Image.fromarray(clothing_only_rgb)
+        
+        # Save to temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_file:
+            clothing_pil.save(tmp_file.name, format="PNG")
+            tmp_file_path = tmp_file.name
+        
+        # Return file for download
+        return FileResponse(
+            tmp_file_path,
+            media_type="image/png",
+            filename=f"clothing_detected_{file.filename}",
+            background=lambda: os.unlink(tmp_file_path)  # Clean up after sending
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in simple clothing detection: {e}")
+        raise HTTPException(status_code=500, detail=f"Error in simple clothing detection: {str(e)}")
+
+@app.post("/clothing/analyze/download")
+async def analyze_clothing_with_colors_download(
+    file: UploadFile = File(...),
+    num_colors: int = Form(5)
+):
+    """Combine clothing detection with color analysis - returns downloadable image."""
+    try:
+        if not file.content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail="File must be an image")
+        
+        image_bytes = await file.read()
+        
+        # First, detect clothing areas
+        pil_image = Image.open(BytesIO(image_bytes))
+        cv_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+        
+        # Simple background removal
+        hsv = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(hsv, np.array([0, 0, 50]), np.array([180, 255, 255]))
+        
+        # Clean mask
+        kernel = np.ones((5,5), np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        
+        # Apply mask to get clothing-only image
+        clothing_only = cv2.bitwise_and(cv_image, cv_image, mask=mask)
+        
+        # Convert to PIL for saving
+        clothing_rgb = cv2.cvtColor(clothing_only, cv2.COLOR_BGR2RGB)
+        clothing_pil = Image.fromarray(clothing_rgb)
+        
+        # Save to temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_file:
+            clothing_pil.save(tmp_file.name, format="PNG")
+            tmp_file_path = tmp_file.name
+        
+        # Return file for download
+        return FileResponse(
+            tmp_file_path,
+            media_type="image/png",
+            filename=f"clothing_analyzed_{file.filename}",
+            background=lambda: os.unlink(tmp_file_path)  # Clean up after sending
+        )
         
     except Exception as e:
         logger.error(f"Error in clothing analysis: {e}")

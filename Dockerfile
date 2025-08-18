@@ -3,16 +3,8 @@
 
 FROM python:3.9
 
-# Install essential system dependencies for OpenCV
+# Install only server-side dependencies for OpenCV (no GUI)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1 \
-    libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender1 \
-    libgomp1 \
-    libgthread-2.0-0 \
-    libgtk-3-0 \
     libjpeg62-turbo-dev \
     libpng16-16 \
     libtiff6 \
