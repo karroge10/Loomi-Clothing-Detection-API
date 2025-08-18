@@ -1,9 +1,14 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Request
 from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 import base64
 from typing import Optional
+
+# Import our modules
+from rate_limiter import rate_limiter
+from config import config
+from user_manager import get_user_id
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
@@ -43,28 +48,69 @@ def health_check():
     return {"status": "ok"}
 
 @app.post("/clothing")
-async def get_clothing_list(file: UploadFile = File(...)):
-    """Detect all clothing types on image and return coordinates."""
+async def detect_clothing(
+    file: UploadFile = File(...),
+    request: Request = None
+):
+    """
+    Detect clothing types in the uploaded image.
+    
+    Returns:
+    - clothing_types: List of detected clothing types with confidence scores
+    - processing_time: Time taken for detection
+    """
     try:
+        # Get user ID for rate limiting
+        user_id = get_user_id(request)
+        
+        # Check rate limit
+        if not await rate_limiter.check_rate_limit(user_id, "/clothing"):
+            raise HTTPException(
+                status_code=429, 
+                detail=f"Rate limit exceeded. Maximum {config.rate_limit_requests} requests per {config.rate_limit_window} seconds."
+            )
+        
+        # Check concurrent limit
+        if not await rate_limiter.check_concurrent_limit(user_id):
+            raise HTTPException(
+                status_code=429, 
+                detail=f"Concurrent request limit exceeded. Maximum {config.max_concurrent_requests} concurrent requests."
+            )
+        
         if not file.content_type.startswith("image/"):
             raise HTTPException(status_code=400, detail="File must be an image")
         
+        # Read file content once
         image_bytes = await file.read()
+        
+        # Add request to tracking after successful validation
+        await rate_limiter.add_request(user_id, "/clothing", len(image_bytes))
         
         # Use the proper clothing detector from clothing_detector.py
         from clothing_detector import detect_clothing_types
+        
         clothing_result = detect_clothing_types(image_bytes)
+        
+        # Remove request from concurrent tracking
+        await rate_limiter.remove_request(user_id)
         
         return JSONResponse(clothing_result)
         
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
+        # Remove request from concurrent tracking on error
+        if 'user_id' in locals():
+            await rate_limiter.remove_request(user_id)
         logger.error(f"Error in clothing detection: {e}")
         raise HTTPException(status_code=500, detail=f"Error in clothing detection: {str(e)}")
 
 @app.post("/analyze")
 async def analyze_image(
     file: UploadFile = File(...),
-    selected_clothing: Optional[str] = Form(None)
+    selected_clothing: Optional[str] = Form(None),
+    request: Request = None
 ):
     """
     Full image analysis: clothing detection, clothing-only image, dominant color.
@@ -75,10 +121,31 @@ async def analyze_image(
     - clothing_only_image: Base64 PNG with transparent background
     """
     try:
+        # Get user ID for rate limiting
+        user_id = get_user_id(request)
+        
+        # Check rate limit
+        if not await rate_limiter.check_rate_limit(user_id, "/analyze"):
+            raise HTTPException(
+                status_code=429, 
+                detail=f"Rate limit exceeded. Maximum {config.rate_limit_requests} requests per {config.rate_limit_window} seconds."
+            )
+        
+        # Check concurrent limit
+        if not await rate_limiter.check_concurrent_limit(user_id):
+            raise HTTPException(
+                status_code=429, 
+                detail=f"Concurrent request limit exceeded. Maximum {config.max_concurrent_requests} concurrent requests."
+            )
+        
         if not file.content_type.startswith("image/"):
             raise HTTPException(status_code=400, detail="File must be an image")
         
+        # Read file content once
         image_bytes = await file.read()
+        
+        # Add request to tracking after successful validation
+        await rate_limiter.add_request(user_id, "/analyze", len(image_bytes))
         
         # Use the proper clothing detector from clothing_detector.py
         from clothing_detector import detect_clothing_types, create_clothing_only_image
@@ -93,6 +160,9 @@ async def analyze_image(
         # Step 3: Get dominant color from clothing-only image
         color = get_dominant_color_from_base64(clothing_only_image)
         
+        # Remove request from concurrent tracking
+        await rate_limiter.remove_request(user_id)
+        
         return JSONResponse({
             "dominant_color": color,
             "clothing_analysis": clothing_result,
@@ -100,14 +170,21 @@ async def analyze_image(
             "selected_clothing": selected_clothing
         })
         
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
+        # Remove request from concurrent tracking on error
+        if 'user_id' in locals():
+            await rate_limiter.remove_request(user_id)
         logger.error(f"Error in clothing analysis: {e}")
         raise HTTPException(status_code=500, detail=f"Error in clothing analysis: {str(e)}")
 
 @app.post("/analyze/download")
 async def analyze_image_download(
     file: UploadFile = File(...),
-    selected_clothing: Optional[str] = Form(None)
+    selected_clothing: Optional[str] = Form(None),
+    request: Request = None
 ):
     """
     Download clothing-only image with transparent background.
@@ -116,10 +193,31 @@ async def analyze_image_download(
     - Returns: PNG file with transparent background
     """
     try:
+        # Get user ID for rate limiting
+        user_id = get_user_id(request)
+        
+        # Check rate limit
+        if not await rate_limiter.check_rate_limit(user_id, "/analyze/download"):
+            raise HTTPException(
+                status_code=429, 
+                detail=f"Rate limit exceeded. Maximum {config.rate_limit_requests} requests per {config.rate_limit_window} seconds."
+            )
+        
+        # Check concurrent limit
+        if not await rate_limiter.check_concurrent_limit(user_id):
+            raise HTTPException(
+                status_code=429, 
+                detail=f"Concurrent request limit exceeded. Maximum {config.max_concurrent_requests} concurrent requests."
+            )
+        
         if not file.content_type.startswith("image/"):
             raise HTTPException(status_code=400, detail="File must be an image")
         
+        # Read file content once
         image_bytes = await file.read()
+        
+        # Add request to tracking after successful validation
+        await rate_limiter.add_request(user_id, "/analyze/download", len(image_bytes))
         
         # Use the proper clothing detector from clothing_detector.py
         from clothing_detector import create_clothing_only_image
@@ -143,12 +241,21 @@ async def analyze_image_download(
         if not filename.endswith('.png'):
             filename = filename.rsplit('.', 1)[0] + '.png'
         
+        # Remove request from concurrent tracking
+        await rate_limiter.remove_request(user_id)
+        
         return Response(
             content=image_data,
             media_type="image/png",
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
         
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
+        # Remove request from concurrent tracking on error
+        if 'user_id' in locals():
+            await rate_limiter.remove_request(user_id)
         logger.error(f"Error in clothing analysis download: {e}")
         raise HTTPException(status_code=500, detail=f"Error in clothing analysis download: {str(e)}")
