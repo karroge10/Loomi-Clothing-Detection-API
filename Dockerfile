@@ -5,24 +5,24 @@ FROM python:3.9
 
 # Install system dependencies for OpenCV
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
-    libxrender-dev \
+    libxrender1 \
     libgomp1 \
     libgthread-2.0-0 \
     libgtk-3-0 \
-    libavcodec-dev \
+    libavcodec-extra \
     libavformat-dev \
     libswscale-dev \
-    libv4l-dev \
-    libxvidcore-dev \
-    libx264-dev \
-    libjpeg-dev \
-    libpng-dev \
-    libtiff-dev \
-    libatlas-base-dev \
+    libv4l-0 \
+    libxvidcore4 \
+    libx264-163 \
+    libjpeg62-turbo-dev \
+    libpng16-16 \
+    libtiff6 \
+    libopenblas-dev \
     gfortran \
     && rm -rf /var/lib/apt/lists/*
 
