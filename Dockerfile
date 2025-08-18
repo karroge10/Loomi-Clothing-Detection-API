@@ -1,5 +1,13 @@
 FROM python:3.11-slim
 
+# Install system dependencies FIRST (before switching user)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Create user as required by HF
 RUN useradd -m -u 1000 user
 USER user
@@ -10,14 +18,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     HOST=0.0.0.0 \
     PORT=7860 \
     WARMUP_ON_STARTUP=true
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1 \
-    libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
