@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 from typing import Optional
 from pydantic import BaseModel
+import traceback
 
 # Import our modules
 from rate_limiter import rate_limiter
@@ -20,7 +21,6 @@ class SegmentationAnalysisRequest(BaseModel):
     selected_clothing: Optional[str] = None
     
     class Config:
-        # Allow larger payloads
         str_max_length = 10_000_000  # 10MB limit for segmentation data
 
 # Pre-load models on startup for faster first request
@@ -52,7 +52,25 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"]
 )
+
+# Custom exception handler for better error handling
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Global exception handler: {exc}")
+    logger.error(f"Exception type: {type(exc)}")
+    logger.error(f"Traceback: {traceback.format_exc()}")
+    
+    # Return safe error response
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal server error",
+            "detail": str(exc) if str(exc) else "Unknown error occurred",
+            "type": type(exc).__name__
+        }
+    )
 
 @app.get("/")
 def read_root():

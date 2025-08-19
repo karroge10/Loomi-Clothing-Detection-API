@@ -371,34 +371,30 @@ class ClothingDetector:
         Returns both clothing info and segmentation data.
         """
         try:
-            # Get cached segmentation result
             seg_result = self._segment_image(image_bytes)
             pred_seg = seg_result['pred_seg']
             image = seg_result['image']
             
-            # Get clothing detection
             clothing_result = self.detect_clothing(image_bytes)
             
             # Convert original image to base64 for reuse
             import base64
             from io import BytesIO
             
-            # Save original image as base64
             buffer = BytesIO()
             image.save(buffer, format='PNG')
             original_image_base64 = base64.b64encode(buffer.getvalue()).decode()
             
-            # Return both clothing info and segmentation data
+            # Ensure all data is JSON serializable
             return {
                 **clothing_result,
                 "segmentation_data": {
                     "pred_seg": pred_seg.tolist(),  # Convert numpy array to list for JSON
-                    "image_size": image.size,
+                    "image_size": list(image.size),  # Convert tuple to list for JSON
                     "image_hash": self._get_image_hash(image_bytes),
                     "original_image": f"data:image/png;base64,{original_image_base64}"  # Add original image
                 }
             }
-            
         except Exception as e:
             logger.error(f"Error in clothing detection with segmentation: {e}")
             raise
@@ -533,12 +529,16 @@ class ClothingDetector:
                 # All clothing types
                 mask = np.isin(pred_seg, self.clothing_classes)
             
-            # Convert mask to PIL image
-            mask_img = Image.fromarray(mask.astype(np.uint8) * 255, mode='L')
+            # Ensure mask and image have compatible dimensions
+            mask_height, mask_width = pred_seg.shape
+            img_width, img_height = original_image.size
             
             # Resize mask to match original image if needed
-            if mask_img.size != original_image.size:
-                mask_img = mask_img.resize(original_image.size, Image.NEAREST)
+            if mask_height != img_height or mask_width != img_width:
+                logger.info(f"Resizing mask from {mask_height}x{mask_width} to {img_height}x{img_width}")
+                mask_img = Image.fromarray(mask.astype(np.uint8) * 255, mode='L')
+                mask_img = mask_img.resize((img_width, img_height), Image.NEAREST)
+                mask = np.array(mask_img) > 0  # Convert back to boolean
             
             # Convert original image to RGBA if it's not already
             if original_image.mode != 'RGBA':
@@ -548,9 +548,8 @@ class ClothingDetector:
             result = Image.new('RGBA', original_image.size, (0, 0, 0, 0))
             
             # Apply mask to original image
-            # Copy pixels where mask is white (255), make transparent where mask is black (0)
             original_array = np.array(original_image)
-            mask_array = np.array(mask_img)
+            mask_array = mask.astype(np.uint8)
             
             # Create result array
             result_array = original_array.copy()
