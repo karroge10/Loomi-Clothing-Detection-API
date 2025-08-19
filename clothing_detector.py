@@ -839,6 +839,22 @@ class ClothingDetector:
             # Load original image directly from bytes
             original_image = Image.open(BytesIO(original_image_bytes))
             
+            # Optimize image size for faster color analysis while maintaining quality
+            # Large images can slow down color analysis significantly
+            if original_image.width > 800 or original_image.height > 800:
+                # Calculate optimal size (balance between quality and speed)
+                max_dim = max(original_image.width, original_image.height)
+                if max_dim > 2000:
+                    target_size = (800, 800)  # Very large images
+                elif max_dim > 1200:
+                    target_size = (1000, 1000)  # Large images
+                else:
+                    target_size = (1200, 1200)  # Medium-large images
+                
+                # Resize while maintaining aspect ratio
+                original_image.thumbnail(target_size, Image.LANCZOS)
+                logger.info(f"🔄 Optimized image size from {original_image.width}x{original_image.height} to {target_size[0]}x{target_size[1]} for faster processing")
+            
             # Create mask for selected clothing or all clothing
             if selected_clothing:
                 # Find class ID for selected clothing
