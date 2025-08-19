@@ -141,6 +141,10 @@ class APIConfig:
         # Note: TRANSFORMERS_CACHE is deprecated, using HF_HOME instead
         os.environ["HF_DATASETS_CACHE"] = f"{self.hf_cache_dir}/datasets"
         
+        # CPU optimizations for free tier
+        os.environ["OMP_NUM_THREADS"] = "4"  # Limit OpenMP threads
+        os.environ["MKL_NUM_THREADS"] = "4"  # Limit MKL threads
+        
         # Optimize for HF Spaces
         if self.workers > 1:
             self.workers = 1  # HF Spaces work better with single worker

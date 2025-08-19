@@ -21,22 +21,36 @@ logger = logging.getLogger(__name__)
 
 # Global cache for segmentation results
 _segmentation_cache = {}
+_cache_hits = 0
+_cache_misses = 0
 
 class ClothingDetector:
     def __init__(self):
         """Initialize clothing segmentation model."""
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        logger.info(f"Using device: {self.device}")
+        self.device = torch.device("cpu")  # Force CPU for free tier
+        logger.info(f"Using device: {self.device} (free tier optimization)")
         
-        # Load processor and model
-        # Note: feature_extractor_type and reduce_labels are deprecated in newer versions
+        # Load processor and model with CPU optimizations
+        logger.info("Loading SegformerImageProcessor...")
         self.processor = SegformerImageProcessor.from_pretrained(
             "mattmdjaga/segformer_b2_clothes",
             # Remove deprecated arguments that cause warnings
         )
-        self.model = AutoModelForSemanticSegmentation.from_pretrained("mattmdjaga/segformer_b2_clothes")
+        
+        logger.info("Loading AutoModelForSemanticSegmentation...")
+        self.model = AutoModelForSemanticSegmentation.from_pretrained(
+            "mattmdjaga/segformer_b2_clothes",
+            torch_dtype=torch.float32,  # Use FP32 for CPU stability
+            low_cpu_mem_usage=True,  # Reduce memory usage
+        )
+        
+        logger.info(f"Moving model to {self.device}...")
         self.model.to(self.device)
         self.model.eval()
+        
+        # CPU-specific optimizations
+        torch.set_num_threads(4)  # Limit CPU threads for stability
+        logger.info("Clothing detector initialized successfully (CPU optimized)")
         
         # Clothing labels mapping
         self.labels = {
@@ -62,8 +76,6 @@ class ClothingDetector:
         
         # Clothing classes (exclude body parts and background)
         self.clothing_classes = [4, 5, 6, 7, 8, 9, 10, 16, 17]  # Upper-clothes, Skirt, Pants, Dress, Belt, Left-shoe, Right-shoe, Bag, Scarf
-        
-        logger.info("Clothing detector initialized successfully")
     
     def _get_image_hash(self, image_bytes: bytes) -> str:
         """Create image hash to use as cache key."""
@@ -75,9 +87,13 @@ class ClothingDetector:
         
         # Check cache
         if image_hash in _segmentation_cache:
+            global _cache_hits
+            _cache_hits += 1
             logger.info("Using cached segmentation result")
             return _segmentation_cache[image_hash]
         
+        global _cache_misses
+        _cache_misses += 1
         # Run segmentation
         logger.info("Performing new segmentation")
         image = Image.open(BytesIO(image_bytes)).convert("RGB")
