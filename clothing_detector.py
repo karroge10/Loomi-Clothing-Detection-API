@@ -535,6 +535,8 @@ class ClothingDetector:
             clothing_types = clothing_result.get('clothing_instances', [])
             masks = {}
             
+            logger.info(f"Creating masks for {len(clothing_types)} clothing types...")
+            
             # Create masks for each clothing type
             for clothing_type in clothing_types:
                 type_name = clothing_type.get('type', '')
@@ -547,8 +549,10 @@ class ClothingDetector:
                         masks[type_name] = mask_base64
             
             # Create combined mask for all clothing
+            logger.info("Creating combined mask for all clothing...")
             all_clothing_mask = self._get_all_clothing_mask(pred_seg)
             masks['all'] = self._mask_to_base64(all_clothing_mask)
+            logger.info("All masks created successfully")
             
             # Convert original image to base64 for client display
             import base64

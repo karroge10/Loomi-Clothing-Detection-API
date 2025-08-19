@@ -188,6 +188,12 @@ async def detect_clothing(
         result = detect_clothing_types_optimized(image_bytes)
         logger.info("Clothing detection completed successfully")
         
+        # Log response size for debugging
+        import json
+        response_json = json.dumps(result)
+        response_size_kb = len(response_json.encode('utf-8')) / 1024
+        logger.info(f"Response size: {response_size_kb:.1f} KB")
+        
         # Remove request from concurrent tracking
         logger.info("Removing request from concurrent tracking...")
         await rate_limiter.remove_request(user_id)
