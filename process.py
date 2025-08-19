@@ -1,4 +1,3 @@
-from rembg import remove
 from PIL import Image
 from io import BytesIO
 from sklearn.cluster import KMeans
@@ -7,6 +6,13 @@ import base64
 import os
 import uuid
 import numpy as np
+
+# Conditional import for rembg (only when needed)
+try:
+    from rembg import remove
+    REMBG_AVAILABLE = True
+except ImportError:
+    REMBG_AVAILABLE = False
 
 
 def get_dominant_color(processed_bytes, k=3):
@@ -67,6 +73,9 @@ def get_dominant_color_from_base64(base64_image, k=3):
 
 
 def remove_background(image_bytes: bytes) -> bytes:
+    if not REMBG_AVAILABLE:
+        raise ImportError("rembg module not available. Install with: pip install rembg")
+    
     result_bytes = remove(image_bytes)
 
     # Save image to disk
