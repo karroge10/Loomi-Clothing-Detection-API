@@ -136,9 +136,9 @@ class APIConfig:
     
     def _apply_hf_optimizations(self):
         """Apply Hugging Face Spaces specific optimizations."""
-        # Set HF environment variables
+        # Set HF environment variables (using modern HF_HOME instead of deprecated TRANSFORMERS_CACHE)
         os.environ["HF_HOME"] = self.hf_cache_dir
-        os.environ["TRANSFORMERS_CACHE"] = f"{self.hf_cache_dir}/transformers"
+        # Note: TRANSFORMERS_CACHE is deprecated, using HF_HOME instead
         os.environ["HF_DATASETS_CACHE"] = f"{self.hf_cache_dir}/datasets"
         
         # Optimize for HF Spaces

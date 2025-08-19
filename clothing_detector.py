@@ -8,6 +8,12 @@ import numpy as np
 from collections import Counter
 import logging
 import base64
+import warnings
+
+# Suppress transformers warnings for cleaner logs
+warnings.filterwarnings("ignore", message=".*feature_extractor_type.*")
+warnings.filterwarnings("ignore", message=".*reduce_labels.*")
+warnings.filterwarnings("ignore", message=".*TRANSFORMERS_CACHE.*")
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
@@ -23,7 +29,11 @@ class ClothingDetector:
         logger.info(f"Using device: {self.device}")
         
         # Load processor and model
-        self.processor = SegformerImageProcessor.from_pretrained("mattmdjaga/segformer_b2_clothes")
+        # Note: feature_extractor_type and reduce_labels are deprecated in newer versions
+        self.processor = SegformerImageProcessor.from_pretrained(
+            "mattmdjaga/segformer_b2_clothes",
+            # Remove deprecated arguments that cause warnings
+        )
         self.model = AutoModelForSemanticSegmentation.from_pretrained("mattmdjaga/segformer_b2_clothes")
         self.model.to(self.device)
         self.model.eval()
