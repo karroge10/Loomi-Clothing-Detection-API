@@ -1,4 +1,5 @@
 import hashlib
+import time
 from transformers import SegformerImageProcessor, AutoModelForSemanticSegmentation
 from PIL import Image
 import torch
@@ -25,6 +26,52 @@ _segmentation_cache = {}
 _cache_hits = 0
 _cache_misses = 0
 _cache_access_times = {}  # Track when items were last accessed
+
+# New cache for pred_seg data (for analyze endpoint)
+class SegmentationDataCache:
+    def __init__(self, max_size=50, ttl_hours=2):
+        self.cache = {}
+        self.max_size = max_size
+        self.ttl_seconds = ttl_hours * 3600
+        self.access_times = {}
+    
+    def get(self, image_hash):
+        """Get cached segmentation data if not expired."""
+        if image_hash in self.cache:
+            data, timestamp = self.cache[image_hash]
+            if time.time() - timestamp < self.ttl_seconds:
+                self.access_times[image_hash] = time.time()
+                return data
+            else:
+                # Expired, remove it
+                del self.cache[image_hash]
+                del self.access_times[image_hash]
+        return None
+    
+    def set(self, image_hash, data):
+        """Store segmentation data with timestamp."""
+        if len(self.cache) >= self.max_size:
+            # Remove oldest item
+            oldest_hash = min(self.access_times.keys(), key=lambda k: self.access_times[k])
+            del self.cache[oldest_hash]
+            del self.access_times[oldest_hash]
+        
+        current_time = time.time()
+        self.cache[image_hash] = (data, current_time)
+        self.access_times[image_hash] = current_time
+        
+        logger.info(f"Stored segmentation data in cache for hash: {image_hash[:8]}... (cache size: {len(self.cache)})")
+    
+    def get_stats(self):
+        """Get cache statistics."""
+        return {
+            "size": len(self.cache),
+            "max_size": self.max_size,
+            "ttl_hours": self.ttl_seconds / 3600
+        }
+
+# Global instance
+_segmentation_data_cache = SegmentationDataCache()
 
 # Cache configuration
 MAX_CACHE_SIZE = 15  # Increased from 10
@@ -554,24 +601,21 @@ class ClothingDetector:
             masks['all'] = self._mask_to_base64(all_clothing_mask)
             logger.info("All masks created successfully")
             
-            # Convert original image to base64 for client display
-            import base64
-            from io import BytesIO
-            
-            buffer = BytesIO()
-            image.save(buffer, format='PNG')
-            original_image_base64 = base64.b64encode(buffer.getvalue()).decode()
+            # Store pred_seg in cache for analyze endpoint
+            image_hash = self._get_image_hash(image_bytes)
+            _segmentation_data_cache.set(image_hash, {
+                "pred_seg": pred_seg,
+                "image_size": list(image.size)
+            })
             
             return {
                 **clothing_result,
                 "segmentation_data": {
                     "masks": masks,
                     "image_size": list(image.size),
-                    "image_hash": self._get_image_hash(image_bytes),
-                    "pred_seg": pred_seg.tolist(),  # Keep for compatibility
-                    "original_image": f"data:image/png;base64,{original_image_base64}"  # Add original image
-                },
-                "original_image": f"data:image/png;base64,{original_image_base64}"  # Also add at root level for compatibility
+                    "image_hash": image_hash
+                    # pred_seg removed - stored in server cache instead
+                }
             }
         except Exception as e:
             logger.error(f"Error in optimized clothing detection: {e}")
@@ -631,25 +675,29 @@ class ClothingDetector:
     
     def analyze_from_segmentation(self, segmentation_data: dict, selected_clothing: str = None) -> dict:
         """
-        Analyze image using pre-computed segmentation data.
+        Analyze image using pre-computed segmentation data from server cache.
         Much faster than full analysis.
         """
         try:
-            # Reconstruct segmentation result from data
-            pred_seg = np.array(segmentation_data["pred_seg"])
-            image_size = segmentation_data["image_size"]
+            # Get segmentation data from server cache
+            image_hash = segmentation_data.get("image_hash")
+            if not image_hash:
+                raise ValueError("No image_hash provided in segmentation_data")
             
-            # Check if we have the original image
-            if "original_image" in segmentation_data:
-                # Create real clothing-only image using original image
-                clothing_only_image = self._create_real_clothing_only_image(
-                    segmentation_data["original_image"], pred_seg, selected_clothing
-                )
-            else:
-                # Fallback to visualization if no original image
-                clothing_only_image = self._create_segmentation_visualization(
-                    pred_seg, image_size, selected_clothing
-                )
+            cached_data = _segmentation_data_cache.get(image_hash)
+            if not cached_data:
+                raise ValueError(f"Segmentation data not found in cache for hash: {image_hash[:8]}...")
+            
+            # Use cached data
+            pred_seg = cached_data["pred_seg"]
+            image_size = cached_data["image_size"]
+            
+            logger.info(f"Using cached segmentation data for hash: {image_hash[:8]}...")
+            
+            # Create clothing-only image using segmentation visualization
+            clothing_only_image = self._create_segmentation_visualization(
+                pred_seg, image_size, selected_clothing
+            )
             
             # Get dominant color from the image
             from process import get_dominant_color_from_base64

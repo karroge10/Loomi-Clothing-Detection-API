@@ -104,11 +104,14 @@ def health_check():
 def performance_stats():
     """Get performance statistics and cache info."""
     try:
-        from clothing_detector import _cache_hits, _cache_misses, _segmentation_cache
+        from clothing_detector import _cache_hits, _cache_misses, _segmentation_cache, _segmentation_data_cache
         
         # Calculate cache hit rate
         total_requests = _cache_hits + _cache_misses
         hit_rate = (_cache_hits / total_requests * 100) if total_requests > 0 else 0
+        
+        # Get segmentation data cache stats
+        seg_cache_stats = _segmentation_data_cache.get_stats()
         
         return {
             "cache_stats": {
@@ -116,6 +119,11 @@ def performance_stats():
                 "misses": _cache_misses,
                 "hit_rate_percent": round(hit_rate, 2),
                 "cached_images": len(_segmentation_cache)
+            },
+            "segmentation_cache": {
+                "size": seg_cache_stats["size"],
+                "max_size": seg_cache_stats["max_size"],
+                "ttl_hours": seg_cache_stats["ttl_hours"]
             },
             "device_info": {
                 "device": "cpu",
@@ -127,7 +135,8 @@ def performance_stats():
                 "Using CPU optimization for free tier",
                 "Limited to 4 threads for stability",
                 "Cache enabled for repeated images",
-                "Models pre-loaded at startup"
+                "Models pre-loaded at startup",
+                "Segmentation data cached for analyze endpoint"
             ]
         }
     except Exception as e:
