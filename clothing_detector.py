@@ -831,8 +831,8 @@ class ClothingDetector:
                 if len(outline_coords[0]) > 0:
                     logger.info(f"Drawing {len(outline_coords[0])} outline pixels")
                     
-                    # Color based on clothing type - теперь единый цвет для всех
-                    color = (34, 197, 94, 255)  # #22c55e для всех типов одежды
+                    # Color based on clothing type - now unified color for all
+                    color = (34, 197, 94, 255)  # #22c55e for all clothing types
                     
                     # Draw smooth outline with anti-aliasing effect
                     for y, x in zip(outline_coords[0], outline_coords[1]):
@@ -883,8 +883,8 @@ class ClothingDetector:
     def _create_semi_transparent_overlay(self, image, mask_array, selected_clothing):
         """Create semi-transparent colored overlay for selected clothing."""
         try:
-            # Единый цвет для всех типов одежды
-            overlay_color = (34, 197, 94, 80)  # #22c55e с 30% прозрачности
+            # Unified color for all clothing types
+            overlay_color = (34, 197, 94, 80)  # #22c55e with 30% transparency
             
             # Create overlay image
             overlay = Image.new('RGBA', image.size, (0, 0, 0, 0))
@@ -934,8 +934,8 @@ class ClothingDetector:
             x_min = max(0, x_min - padding)
             x_max = min(image.width - 1, x_max + padding)
             
-            # Color based on clothing type - теперь единый цвет для всех
-            border_color = (34, 197, 94, 255)  # #22c55e для всех типов одежды
+            # Color based on clothing type - now unified color for all
+            border_color = (34, 197, 94, 255)  # #22c55e for all clothing types
             
             # Draw border rectangle
             draw = ImageDraw.Draw(image)

@@ -79,20 +79,20 @@ def read_root():
         "version": "1.0.0",
         "status": "running",
         "endpoints": [
-            "/detect",           # Основной эндпоинт для определения одежды
-            "/analyze",          # Анализ с переиспользованием данных
-            "/health",           # Проверка здоровья
-            "/performance"       # Статистика производительности
+            "/detect",           # Main endpoint for clothing detection
+            "/analyze",          # Analysis with data reuse
+            "/health",           # Health check
+            "/performance"       # Performance statistics
         ],
         "docs": "/docs",
         "workflow": {
-            "step1": "POST /detect - загрузить изображение и получить типы одежды с сегментацией",
-            "step2": "POST /analyze - проанализировать выбранный тип одежды (убрать фон, получить цвет)"
+            "step1": "POST /detect - upload image and get clothing types with segmentation",
+            "step2": "POST /analyze - analyze selected clothing type (remove background, get color)"
         },
         "optimization_tips": [
-            "Используйте /detect для получения данных сегментации",
-            "Затем используйте /analyze с этими данными для быстрого анализа",
-            "Это позволяет избежать повторного запуска ML модели"
+            "Use /detect to get segmentation data",
+            "Then use /analyze with this data for fast analysis",
+            "This avoids re-running the ML model"
         ]
     }
 
