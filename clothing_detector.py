@@ -193,7 +193,7 @@ class ClothingDetector:
             global _cache_hits
             _cache_hits += 1
             _update_cache_access(image_hash)  # Update access statistics
-            logger.info("Using cached high-quality segmentation result")
+            logger.info("⏱️ Using cached high-quality segmentation result")
             return _segmentation_cache[image_hash]
         
         global _cache_misses
@@ -201,22 +201,36 @@ class ClothingDetector:
         # Run segmentation
         logger.info("Performing new high-quality segmentation")
         
+        seg_start = time.time()
         try:
             # Load and preprocess image
+            preprocess_start = time.time()
             image = Image.open(BytesIO(image_bytes))
             image = image.convert('RGB')
+            preprocess_time = time.time() - preprocess_start
+            logger.info(f"⏱️ Image preprocessing completed in {preprocess_time:.2f}s")
             
             # Prepare inputs for the model
+            inputs_start = time.time()
             inputs = self.processor(images=image, return_tensors="pt")
+            inputs_time = time.time() - inputs_start
+            logger.info(f"⏱️ Input preparation completed in {inputs_time:.2f}s")
             
             # Move inputs to device
+            device_start = time.time()
             inputs = {k: v.to(self.device) for k, v in inputs.items()}
+            device_time = time.time() - device_start
+            logger.info(f"⏱️ Device transfer completed in {device_time:.2f}s")
             
             # Run inference
+            inference_start = time.time()
             with torch.no_grad():
                 outputs = self.model(**inputs)
+            inference_time = time.time() - inference_start
+            logger.info(f"⏱️ Model inference completed in {inference_time:.2f}s")
             
             # Get predictions
+            postprocess_start = time.time()
             logits = outputs.logits
             pred_seg = torch.argmax(logits, dim=1).squeeze().cpu().numpy()
             
@@ -251,7 +265,11 @@ class ClothingDetector:
                 
                 logger.info(f"Created high-quality segmentation: {pred_seg_high_quality.shape} for image size {image.size}")
             
+            postprocess_time = time.time() - postprocess_start
+            logger.info(f"⏱️ Postprocessing completed in {postprocess_time:.2f}s")
+            
             # Store result in cache
+            cache_start = time.time()
             _segmentation_cache[image_hash] = {
                 'pred_seg': pred_seg_high_quality,  # Use high-quality version
                 'image': image
@@ -260,6 +278,12 @@ class ClothingDetector:
             # Update cache access and cleanup if needed
             _update_cache_access(image_hash)
             _cleanup_cache()
+            cache_time = time.time() - cache_start
+            logger.info(f"⏱️ Cache operations completed in {cache_time:.2f}s")
+            
+            # Total segmentation time
+            total_seg_time = time.time() - seg_start
+            logger.info(f"⏱️ TOTAL segmentation completed in {total_seg_time:.2f}s (preprocess: {preprocess_time:.2f}s, inputs: {inputs_time:.2f}s, device: {device_time:.2f}s, inference: {inference_time:.2f}s, postprocess: {postprocess_time:.2f}s, cache: {cache_time:.2f}s)")
             
             return {
                 'pred_seg': pred_seg_high_quality,  # Return high-quality version
@@ -267,7 +291,8 @@ class ClothingDetector:
             }
             
         except Exception as e:
-            logger.error(f"Error in segmentation: {e}")
+            total_seg_time = time.time() - seg_start
+            logger.error(f"❌ Error in segmentation after {total_seg_time:.2f}s: {e}")
             raise
     
     def detect_clothing(self, image_bytes: bytes) -> dict:
@@ -571,14 +596,24 @@ class ClothingDetector:
         Optimized version that returns only segmentation data without creating highlight images.
         Much faster - client handles visualization.
         """
+        start_time = time.time()
         try:
+            # Step 1: Segmentation
+            seg_start = time.time()
             seg_result = self._segment_image(image_bytes)
             pred_seg = seg_result['pred_seg']
             image = seg_result['image']
+            seg_time = time.time() - seg_start
+            logger.info(f"⏱️ Segmentation completed in {seg_time:.2f}s")
             
+            # Step 2: Clothing detection
+            detect_start = time.time()
             clothing_result = self.detect_clothing(image_bytes)
+            detect_time = time.time() - detect_start
+            logger.info(f"⏱️ Clothing detection completed in {detect_time:.2f}s")
             
-            # Get clothing types and create masks
+            # Step 3: Create masks
+            masks_start = time.time()
             clothing_types = clothing_result.get('clothing_instances', [])
             masks = {}
             
@@ -601,13 +636,23 @@ class ClothingDetector:
             masks['all'] = self._mask_to_base64(all_clothing_mask)
             logger.info("All masks created successfully")
             
-            # Store pred_seg and original image in cache for analyze endpoint
+            masks_time = time.time() - masks_start
+            logger.info(f"⏱️ Masks creation completed in {masks_time:.2f}s")
+            
+            # Step 4: Cache storage
+            cache_start = time.time()
             image_hash = self._get_image_hash(image_bytes)
             _segmentation_data_cache.set(image_hash, {
                 "pred_seg": pred_seg,
                 "image_size": list(image.size),
                 "original_image_bytes": image_bytes  # Store original image for background removal
             })
+            cache_time = time.time() - cache_start
+            logger.info(f"⏱️ Cache storage completed in {cache_time:.2f}s")
+            
+            # Total time
+            total_time = time.time() - start_time
+            logger.info(f"🚀 TOTAL /detect completed in {total_time:.2f}s (seg: {seg_time:.2f}s, detect: {detect_time:.2f}s, masks: {masks_time:.2f}s, cache: {cache_time:.2f}s)")
             
             return {
                 **clothing_result,
@@ -619,7 +664,8 @@ class ClothingDetector:
                 }
             }
         except Exception as e:
-            logger.error(f"Error in optimized clothing detection: {e}")
+            total_time = time.time() - start_time
+            logger.error(f"❌ Error in optimized clothing detection after {total_time:.2f}s: {e}")
             raise
     
     def _get_clothing_mask(self, pred_seg: np.ndarray, clothing_type: str) -> np.ndarray:
@@ -679,8 +725,10 @@ class ClothingDetector:
         Analyze image using pre-computed segmentation data from server cache.
         Much faster than full analysis.
         """
+        start_time = time.time()
         try:
-            # Get segmentation data from server cache
+            # Step 1: Get data from cache
+            cache_start = time.time()
             image_hash = segmentation_data.get("image_hash")
             if not image_hash:
                 raise ValueError("No image_hash provided in segmentation_data")
@@ -694,16 +742,27 @@ class ClothingDetector:
             image_size = cached_data["image_size"]
             original_image_bytes = cached_data["original_image_bytes"]
             
-            logger.info(f"Using cached segmentation data for hash: {image_hash[:8]}...")
+            cache_time = time.time() - cache_start
+            logger.info(f"⏱️ Cache retrieval completed in {cache_time:.2f}s for hash: {image_hash[:8]}...")
             
-            # Create real clothing-only image using original image and segmentation mask
+            # Step 2: Create clothing-only image
+            image_start = time.time()
             clothing_only_image = self._create_real_clothing_only_image(
                 original_image_bytes, pred_seg, selected_clothing
             )
+            image_time = time.time() - image_start
+            logger.info(f"⏱️ Clothing-only image creation completed in {image_time:.2f}s")
             
-            # Get dominant color from the image
+            # Step 3: Analyze dominant color
+            color_start = time.time()
             from process import get_dominant_color_from_base64
             color = get_dominant_color_from_base64(clothing_only_image)
+            color_time = time.time() - color_start
+            logger.info(f"⏱️ Dominant color analysis completed in {color_time:.2f}s")
+            
+            # Total time
+            total_time = time.time() - start_time
+            logger.info(f"🚀 TOTAL /analyze completed in {total_time:.2f}s (cache: {cache_time:.2f}s, image: {image_time:.2f}s, color: {color_time:.2f}s)")
             
             return {
                 "dominant_color": color,
@@ -713,7 +772,8 @@ class ClothingDetector:
             }
             
         except Exception as e:
-            logger.error(f"Error in analysis from segmentation: {e}")
+            total_time = time.time() - start_time
+            logger.error(f"❌ Error in analysis from segmentation after {total_time:.2f}s: {e}")
             raise
     
     def _create_segmentation_visualization(self, pred_seg: np.ndarray, image_size: tuple, selected_clothing: str = None) -> str:
