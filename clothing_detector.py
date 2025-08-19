@@ -519,6 +519,103 @@ class ClothingDetector:
             logger.error(f"Error in clothing detection with segmentation: {e}")
             raise
     
+    def detect_clothing_with_segmentation_optimized(self, image_bytes: bytes) -> dict:
+        """
+        Optimized version that returns only segmentation data without creating highlight images.
+        Much faster - client handles visualization.
+        """
+        try:
+            seg_result = self._segment_image(image_bytes)
+            pred_seg = seg_result['pred_seg']
+            image = seg_result['image']
+            
+            clothing_result = self.detect_clothing(image_bytes)
+            
+            # Get clothing types and create masks
+            clothing_types = clothing_result.get('clothing_instances', [])
+            masks = {}
+            
+            # Create masks for each clothing type
+            for clothing_type in clothing_types:
+                type_name = clothing_type.get('type', '')
+                if type_name:
+                    # Get mask for this clothing type
+                    mask = self._get_clothing_mask(pred_seg, type_name)
+                    if mask is not None:
+                        # Convert mask to base64
+                        mask_base64 = self._mask_to_base64(mask)
+                        masks[type_name] = mask_base64
+            
+            # Create combined mask for all clothing
+            all_clothing_mask = self._get_all_clothing_mask(pred_seg)
+            masks['all'] = self._mask_to_base64(all_clothing_mask)
+            
+            # Convert original image to base64 for client display
+            import base64
+            from io import BytesIO
+            
+            buffer = BytesIO()
+            image.save(buffer, format='PNG')
+            original_image_base64 = base64.b64encode(buffer.getvalue()).decode()
+            
+            return {
+                **clothing_result,
+                "segmentation_data": {
+                    "masks": masks,
+                    "image_size": list(image.size),
+                    "image_hash": self._get_image_hash(image_bytes),
+                    "pred_seg": pred_seg.tolist(),  # Keep for compatibility
+                    "original_image": f"data:image/png;base64,{original_image_base64}"  # Add original image
+                },
+                "original_image": f"data:image/png;base64,{original_image_base64}"  # Also add at root level for compatibility
+            }
+        except Exception as e:
+            logger.error(f"Error in optimized clothing detection: {e}")
+            raise
+    
+    def _get_clothing_mask(self, pred_seg: np.ndarray, clothing_type: str) -> np.ndarray:
+        """Get binary mask for specific clothing type."""
+        try:
+            # Map clothing type to class ID
+            class_mapping = {
+                'Hat': 0, 'Hair': 1, 'Glove': 2, 'Sunglasses': 3, 'Upper-clothes': 4,
+                'Skirt': 5, 'Pants': 6, 'Dress': 7, 'Belt': 8, 'Left-shoe': 9, 'Right-shoe': 10,
+                'Left-sock': 11, 'Right-sock': 12, 'Left-bag': 13, 'Right-bag': 14, 'Scarf': 15
+            }
+            
+            class_id = class_mapping.get(clothing_type)
+            if class_id is not None:
+                mask = (pred_seg == class_id).astype(np.uint8)
+                return mask
+            return None
+        except Exception as e:
+            logger.error(f"Error getting mask for {clothing_type}: {e}")
+            return None
+    
+    def _get_all_clothing_mask(self, pred_seg: np.ndarray) -> np.ndarray:
+        """Get combined mask for all clothing types."""
+        try:
+            # Combine all clothing class IDs (0-15)
+            all_clothing_mask = np.zeros_like(pred_seg, dtype=np.uint8)
+            for class_id in range(16):  # 0-15 are clothing classes
+                all_clothing_mask = np.logical_or(all_clothing_mask, pred_seg == class_id)
+            return all_clothing_mask.astype(np.uint8)
+        except Exception as e:
+            logger.error(f"Error getting all clothing mask: {e}")
+            return np.zeros_like(pred_seg, dtype=np.uint8)
+    
+    def _mask_to_base64(self, mask: np.ndarray) -> str:
+        """Convert numpy mask to base64 string."""
+        try:
+            # Convert mask to bytes
+            mask_bytes = mask.tobytes()
+            # Encode to base64
+            mask_base64 = base64.b64encode(mask_bytes).decode('utf-8')
+            return mask_base64
+        except Exception as e:
+            logger.error(f"Error converting mask to base64: {e}")
+            return ""
+    
     def analyze_from_segmentation(self, segmentation_data: dict, selected_clothing: str = None) -> dict:
         """
         Analyze image using pre-computed segmentation data.
@@ -1003,6 +1100,11 @@ def analyze_from_segmentation(segmentation_data: dict, selected_clothing: str = 
     """Analyze image using pre-computed segmentation data (much faster)."""
     detector = get_clothing_detector()
     return detector.analyze_from_segmentation(segmentation_data, selected_clothing)
+
+def detect_clothing_types_optimized(image_bytes: bytes) -> dict:
+    """Get clothing detection with optimized segmentation data (faster, client handles visualization)."""
+    detector = get_clothing_detector()
+    return detector.detect_clothing_with_segmentation_optimized(image_bytes)
 
 # Global detector singleton (to reuse model)
 _detector = None

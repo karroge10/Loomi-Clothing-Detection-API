@@ -180,12 +180,12 @@ async def detect_clothing(
         logger.info("Adding request to rate limiter...")
         await rate_limiter.add_request(user_id, "/detect", len(image_bytes))
         
-        # Use the proper clothing detector from clothing_detector.py
+        # Use the optimized clothing detector from clothing_detector.py
         logger.info("Importing clothing detector...")
-        from clothing_detector import detect_clothing_types_with_segmentation
+        from clothing_detector import detect_clothing_types_optimized
         
         logger.info("Starting clothing detection...")
-        result = detect_clothing_types_with_segmentation(image_bytes)
+        result = detect_clothing_types_optimized(image_bytes)
         logger.info("Clothing detection completed successfully")
         
         # Remove request from concurrent tracking
