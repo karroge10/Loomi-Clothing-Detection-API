@@ -9,6 +9,7 @@ from collections import Counter
 import logging
 import base64
 import warnings
+import traceback
 
 # Suppress transformers warnings for cleaner logs
 warnings.filterwarnings("ignore", message=".*feature_extractor_type.*")
@@ -19,10 +20,65 @@ warnings.filterwarnings("ignore", message=".*TRANSFORMERS_CACHE.*")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Global cache for segmentation results
+# Global cache for segmentation results with smart priorities
 _segmentation_cache = {}
 _cache_hits = 0
 _cache_misses = 0
+_cache_access_times = {}  # Track when items were last accessed
+
+# Cache configuration
+MAX_CACHE_SIZE = 15  # Increased from 10
+CACHE_PRIORITY_THRESHOLD = 5  # Minimum access count to keep in cache
+
+def _cleanup_cache():
+    """Smart cache cleanup based on access patterns and memory usage."""
+    global _segmentation_cache, _cache_access_times
+    
+    if len(_segmentation_cache) <= MAX_CACHE_SIZE:
+        return
+    
+    # Calculate priority scores (access count * recency)
+    import time
+    current_time = time.time()
+    
+    priority_scores = {}
+    for key, access_info in _cache_access_times.items():
+        if key in _segmentation_cache:
+            recency = current_time - access_info['last_access']
+            priority = access_info['access_count'] / (1 + recency / 3600)  # Normalize by hour
+            priority_scores[key] = priority
+    
+    # Remove lowest priority items
+    items_to_remove = len(_segmentation_cache) - MAX_CACHE_SIZE
+    sorted_keys = sorted(priority_scores.keys(), key=lambda k: priority_scores[k])
+    
+    for key in sorted_keys[:items_to_remove]:
+        del _segmentation_cache[key]
+        del _cache_access_times[key]
+        logger.info(f"Removed low-priority cache item: {key}")
+    
+    logger.info(f"Cache cleaned up: {len(_segmentation_cache)} items remaining")
+
+def _update_cache_access(image_hash: str):
+    """Update cache access statistics."""
+    global _cache_access_times
+    import time
+    
+    current_time = time.time()
+    if image_hash in _cache_access_times:
+        _cache_access_times[image_hash]['access_count'] += 1
+        _cache_access_times[image_hash]['last_access'] = current_time
+    else:
+        _cache_access_times[image_hash] = {
+            'access_count': 1,
+            'last_access': current_time
+        }
+
+# Temporarily clear cache for testing improved quality
+_segmentation_cache.clear()
+_cache_hits = 0
+_cache_misses = 0
+logger.info("Cache cleared for testing improved quality")
 
 class ClothingDetector:
     def __init__(self):
@@ -85,17 +141,18 @@ class ClothingDetector:
         """Run image segmentation with caching."""
         image_hash = self._get_image_hash(image_bytes)
         
-        # Check cache
+        # Check cache (re-enabled now that quality is improved)
         if image_hash in _segmentation_cache:
             global _cache_hits
             _cache_hits += 1
-            logger.info("Using cached segmentation result")
+            _update_cache_access(image_hash)  # Update access statistics
+            logger.info("Using cached high-quality segmentation result")
             return _segmentation_cache[image_hash]
         
         global _cache_misses
         _cache_misses += 1
         # Run segmentation
-        logger.info("Performing new segmentation")
+        logger.info("Performing new high-quality segmentation")
         
         try:
             # Load and preprocess image
@@ -116,19 +173,49 @@ class ClothingDetector:
             logits = outputs.logits
             pred_seg = torch.argmax(logits, dim=1).squeeze().cpu().numpy()
             
+            # Upsample logits to original image size for better quality
+            import torch.nn.functional as nn
+            
+            # Ensure logits have correct shape (N, C, H, W)
+            if logits.dim() == 3:
+                logits = logits.unsqueeze(0)  # Add batch dimension if missing
+            
+            # Get image dimensions
+            img_height, img_width = image.size[1], image.size[0]  # PIL uses (width, height)
+            
+            # Log tensor shapes for debugging
+            logger.info(f"Logits shape: {logits.shape}, Target size: ({img_height}, {img_width})")
+            
+            # Ensure target size is valid
+            if img_height <= 0 or img_width <= 0:
+                logger.warning(f"Invalid image dimensions: {img_height}x{img_width}, using original segmentation")
+                pred_seg_high_quality = pred_seg
+            else:
+                # Upsample logits to original image size
+                logits_upsampled = nn.interpolate(
+                    logits,
+                    size=(img_height, img_width),  # Use (height, width) format
+                    mode="bilinear",
+                    align_corners=False,
+                )
+                
+                # Get high-quality predictions
+                pred_seg_high_quality = logits_upsampled.argmax(dim=1)[0].cpu().numpy()
+                
+                logger.info(f"Created high-quality segmentation: {pred_seg_high_quality.shape} for image size {image.size}")
+            
             # Store result in cache
             _segmentation_cache[image_hash] = {
-                'pred_seg': pred_seg,
+                'pred_seg': pred_seg_high_quality,  # Use high-quality version
                 'image': image
             }
             
-            # Limit cache size (keep last 10)
-            if len(_segmentation_cache) > 10:
-                oldest_key = next(iter(_segmentation_cache))
-                del _segmentation_cache[oldest_key]
+            # Update cache access and cleanup if needed
+            _update_cache_access(image_hash)
+            _cleanup_cache()
             
             return {
-                'pred_seg': pred_seg,
+                'pred_seg': pred_seg_high_quality,  # Return high-quality version
                 'image': image
             }
             
@@ -385,6 +472,37 @@ class ClothingDetector:
             image.save(buffer, format='PNG')
             original_image_base64 = base64.b64encode(buffer.getvalue()).decode()
             
+            # Create highlighted images for each clothing type
+            highlighted_images = {}
+            
+            # Add "All clothing types" highlight
+            try:
+                all_clothing_highlight = self.create_clothing_highlight_image(image_bytes, None)  # None = all clothing
+                highlighted_images['all'] = all_clothing_highlight
+                logger.info("Created highlight for all clothing types")
+            except Exception as e:
+                logger.warning(f"Could not create highlight for all clothing types: {e}")
+                highlighted_images['all'] = original_image_base64
+            
+            # Create highlights for individual clothing types in parallel batches
+            clothing_types = clothing_result.get('clothing_instances', [])
+            if clothing_types:
+                # Process in smaller batches for better memory management
+                batch_size = 3
+                for i in range(0, len(clothing_types), batch_size):
+                    batch = clothing_types[i:i + batch_size]
+                    
+                    for clothing_type in batch:
+                        type_name = clothing_type.get('type', '')
+                        if type_name:
+                            try:
+                                highlighted_img = self.create_clothing_highlight_image(image_bytes, type_name)
+                                highlighted_images[type_name] = highlighted_img
+                                logger.info(f"Created highlight for {type_name}")
+                            except Exception as e:
+                                logger.warning(f"Could not create highlight for {type_name}: {e}")
+                                highlighted_images[type_name] = original_image_base64
+            
             # Ensure all data is JSON serializable
             return {
                 **clothing_result,
@@ -393,7 +511,9 @@ class ClothingDetector:
                     "image_size": list(image.size),  # Convert tuple to list for JSON
                     "image_hash": self._get_image_hash(image_bytes),
                     "original_image": f"data:image/png;base64,{original_image_base64}"  # Add original image
-                }
+                },
+                "highlighted_images": highlighted_images,  # Images with colored outlines
+                "original_image": f"data:image/png;base64,{original_image_base64}"  # Original image for display
             }
         except Exception as e:
             logger.error(f"Error in clothing detection with segmentation: {e}")
@@ -537,8 +657,36 @@ class ClothingDetector:
             if mask_height != img_height or mask_width != img_width:
                 logger.info(f"Resizing mask from {mask_height}x{mask_width} to {img_height}x{img_width}")
                 mask_img = Image.fromarray(mask.astype(np.uint8) * 255, mode='L')
-                mask_img = mask_img.resize((img_width, img_height), Image.NEAREST)
-                mask = np.array(mask_img) > 0  # Convert back to boolean
+                # Use LANCZOS for better quality instead of NEAREST
+                mask_img = mask_img.resize((img_width, img_height), Image.LANCZOS)
+                mask = np.array(mask_img) > 128  # Threshold for clean binary mask
+            
+            # Apply Gaussian blur to smooth the mask edges and reduce blockiness
+            try:
+                from scipy import ndimage
+                
+                # Convert to float for better precision
+                mask_float = mask.astype(float)
+                
+                # Apply multiple smoothing passes for better quality
+                # First pass: remove noise
+                mask_smooth1 = ndimage.gaussian_filter(mask_float, sigma=0.8)
+                
+                # Second pass: smooth edges
+                mask_smooth2 = ndimage.gaussian_filter(mask_smooth1, sigma=1.0)
+                
+                # Apply threshold with hysteresis for cleaner edges
+                mask = mask_smooth2 > 0.5
+                
+                logger.info("Applied advanced smoothing to mask for smoother edges")
+                
+            except ImportError:
+                logger.info("scipy not available, using basic smoothing")
+                # Basic smoothing without scipy
+                from PIL import ImageFilter
+                mask_img = Image.fromarray(mask.astype(np.uint8) * 255, mode='L')
+                mask_img = mask_img.filter(ImageFilter.GaussianBlur(radius=1.0))
+                mask = np.array(mask_img) > 128
             
             # Convert original image to RGBA if it's not already
             if original_image.mode != 'RGBA':
@@ -547,7 +695,7 @@ class ClothingDetector:
             # Create new image with transparent background
             result = Image.new('RGBA', original_image.size, (0, 0, 0, 0))
             
-            # Apply mask to original image
+            # Apply mask to original image with smooth edges
             original_array = np.array(original_image)
             mask_array = mask.astype(np.uint8)
             
@@ -571,6 +719,301 @@ class ClothingDetector:
             logger.error(f"Error creating real clothing-only image: {e}")
             # Fallback to visualization
             return self._create_segmentation_visualization(pred_seg, (pred_seg.shape[1], pred_seg.shape[0]), selected_clothing)
+
+    def create_clothing_highlight_image(self, image_bytes: bytes, selected_clothing: str = None) -> str:
+        """
+        Create image with highlighted selected clothing type.
+        Returns base64 PNG with colored outline around selected clothing.
+        """
+        try:
+            logger.info(f"Creating highlight image for clothing type: {selected_clothing}")
+            
+            seg_result = self._segment_image(image_bytes)
+            pred_seg = seg_result['pred_seg']
+            image = seg_result['image']
+            
+            logger.info(f"Segmentation shape: {pred_seg.shape}, Image size: {image.size}")
+            
+            # Find class ID for selected clothing
+            class_id = None
+            if selected_clothing:
+                for cid, label in self.labels.items():
+                    if label.lower() == selected_clothing.lower():
+                        class_id = cid
+                        break
+                
+                logger.info(f"Selected clothing '{selected_clothing}' mapped to class ID {class_id}")
+            
+            if class_id is None:
+                # Use all clothing types if none selected
+                mask = np.isin(pred_seg, self.clothing_classes)
+                logger.info(f"Using all clothing types, mask sum: {np.sum(mask)}")
+            else:
+                # Use selected clothing type
+                mask = (pred_seg == class_id)
+                logger.info(f"Using selected clothing type {class_id}, mask sum: {np.sum(mask)}")
+            
+            # Create highlighted image
+            from PIL import Image, ImageDraw
+            
+            # Convert to RGBA if needed
+            if image.mode != 'RGBA':
+                image = image.convert('RGBA')
+            
+            # Create a copy for highlighting
+            highlighted_image = image.copy()
+            draw = ImageDraw.Draw(highlighted_image)
+            
+            # Find contours of the mask
+            mask_array = mask.astype(np.uint8) * 255
+            mask_img = Image.fromarray(mask_array, mode='L')
+            
+            # Resize mask to match image if needed (should not be needed with high-quality segmentation)
+            if mask_img.size != image.size:
+                logger.info(f"Resizing mask from {mask_img.size} to {image.size}")
+                # Use LANCZOS for better quality instead of NEAREST
+                mask_img = mask_img.resize(image.size, Image.LANCZOS)
+                mask_array = np.array(mask_img)
+                # Apply threshold to get clean binary mask
+                mask_array = (mask_array > 128).astype(np.uint8) * 255
+            
+            # Apply advanced smoothing to eliminate blockiness
+            try:
+                from scipy import ndimage
+                
+                # Convert to float for better precision
+                mask_float = mask_array.astype(float) / 255.0
+                
+                # Apply multiple smoothing passes for better quality
+                # First pass: remove noise
+                mask_smooth1 = ndimage.gaussian_filter(mask_float, sigma=0.8)
+                
+                # Second pass: smooth edges
+                mask_smooth2 = ndimage.gaussian_filter(mask_smooth1, sigma=1.2)
+                
+                # Third pass: final smoothing
+                mask_final = ndimage.gaussian_filter(mask_smooth2, sigma=0.6)
+                
+                # Apply threshold with hysteresis for cleaner edges
+                mask_clean = (mask_final > 0.3).astype(np.uint8) * 255
+                
+                # Apply morphological operations for cleaner mask
+                mask_clean = ndimage.binary_opening(mask_clean > 0, iterations=1)
+                mask_clean = ndimage.binary_closing(mask_clean, iterations=1)
+                
+                mask_array = mask_clean.astype(np.uint8) * 255
+                
+                logger.info("Applied advanced smoothing and morphological operations for high-quality mask")
+                
+            except ImportError:
+                logger.info("scipy not available, using basic smoothing")
+                # Basic smoothing without scipy
+                from PIL import ImageFilter
+                mask_img = mask_img.filter(ImageFilter.GaussianBlur(radius=1.5))
+                mask_array = np.array(mask_img)
+                mask_array = (mask_array > 128).astype(np.uint8) * 255
+            
+            # Create outline by dilating and subtracting original mask
+            try:
+                from scipy import ndimage
+                
+                # Create smooth outline
+                mask_bool = mask_array > 0
+                
+                # Dilate the mask to create outline
+                dilated = ndimage.binary_dilation(mask_bool, iterations=2)
+                outline = dilated & ~mask_bool
+                
+                logger.info(f"Outline created, outline pixels: {np.sum(outline)}")
+                
+                # Draw colored outline with anti-aliasing
+                outline_coords = np.where(outline)
+                if len(outline_coords[0]) > 0:
+                    logger.info(f"Drawing {len(outline_coords[0])} outline pixels")
+                    
+                    # Color based on clothing type
+                    if selected_clothing and selected_clothing.lower() == 'skirt':
+                        color = (255, 20, 147, 255)  # Deep pink for skirt
+                    elif selected_clothing and selected_clothing.lower() == 'dress':
+                        color = (138, 43, 226, 255)  # Blue violet for dress
+                    elif selected_clothing and selected_clothing.lower() == 'pants':
+                        color = (255, 140, 0, 255)  # Dark orange for pants
+                    else:
+                        color = (0, 255, 127, 255)  # Spring green for other
+                    
+                    # Draw smooth outline with anti-aliasing effect
+                    for y, x in zip(outline_coords[0], outline_coords[1]):
+                        if 0 <= y < highlighted_image.height and 0 <= x < highlighted_image.width:
+                            # Create anti-aliasing effect with varying opacity
+                            base_color = list(color)
+                            base_color[3] = 255  # Full opacity for center
+                            highlighted_image.putpixel((x, y), tuple(base_color))
+                            
+                            # Add semi-transparent pixels around for smoother edges
+                            for dy in range(-1, 2):
+                                for dx in range(-1, 2):
+                                    if dy == 0 and dx == 0:
+                                        continue  # Skip center pixel
+                                    ny, nx = y + dy, x + dx
+                                    if 0 <= ny < highlighted_image.height and 0 <= nx < highlighted_image.width:
+                                        # Reduce opacity for edge pixels
+                                        edge_color = list(color)
+                                        edge_color[3] = 128  # 50% opacity
+                                        highlighted_image.putpixel((nx, ny), tuple(edge_color))
+                else:
+                    logger.warning("No outline pixels found!")
+                    # Fallback: create semi-transparent overlay
+                    self._create_semi_transparent_overlay(highlighted_image, mask_array, selected_clothing)
+                    
+            except ImportError:
+                logger.warning("scipy not available, using semi-transparent overlay method")
+                # Create semi-transparent colored overlay
+                self._create_semi_transparent_overlay(highlighted_image, mask_array, selected_clothing)
+            
+            # Convert to base64
+            buffer = BytesIO()
+            highlighted_image.save(buffer, format='PNG')
+            img_str = base64.b64encode(buffer.getvalue()).decode()
+            
+            logger.info("Highlight image created successfully")
+            return f"data:image/png;base64,{img_str}"
+            
+        except Exception as e:
+            logger.error(f"Error creating highlighted image: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            # Fallback to original image
+            buffer = BytesIO()
+            image.save(buffer, format='PNG')
+            img_str = base64.b64encode(buffer.getvalue()).decode()
+            return f"data:image/png;base64,{img_str}"
+    
+    def _create_semi_transparent_overlay(self, image, mask_array, selected_clothing):
+        """Create semi-transparent colored overlay for selected clothing."""
+        try:
+            # Color based on clothing type
+            if selected_clothing and selected_clothing.lower() == 'skirt':
+                overlay_color = (255, 20, 147, 80)  # Deep pink with 30% opacity
+            elif selected_clothing and selected_clothing.lower() == 'dress':
+                overlay_color = (138, 43, 226, 80)  # Blue violet with 30% opacity
+            elif selected_clothing and selected_clothing.lower() == 'pants':
+                overlay_color = (255, 140, 0, 80)  # Dark orange with 30% opacity
+            else:
+                overlay_color = (0, 255, 127, 80)  # Spring green with 30% opacity
+            
+            # Create overlay image
+            overlay = Image.new('RGBA', image.size, (0, 0, 0, 0))
+            overlay_array = np.array(overlay)
+            
+            # Apply mask to overlay
+            mask_bool = mask_array > 0
+            overlay_array[mask_bool] = overlay_color
+            
+            # Convert back to PIL and composite
+            overlay = Image.fromarray(overlay_array, 'RGBA')
+            result = Image.alpha_composite(image, overlay)
+            
+            # Copy result back to original image
+            image.paste(result, (0, 0))
+            
+            logger.info("Semi-transparent overlay created successfully")
+            
+        except Exception as e:
+            logger.error(f"Error creating overlay: {e}")
+            # If overlay fails, create simple colored border
+            self._create_simple_border(image, mask_array, selected_clothing)
+    
+    def _create_simple_border(self, image, mask_array, selected_clothing):
+        """Create simple colored border around detected clothing."""
+        try:
+            from PIL import ImageDraw
+            
+            # Find bounding box of the mask
+            mask_bool = mask_array > 0
+            if not np.any(mask_bool):
+                logger.warning("No clothing detected for border creation")
+                return
+            
+            # Get coordinates of clothing pixels
+            coords = np.where(mask_bool)
+            if len(coords[0]) == 0:
+                return
+            
+            y_min, y_max = np.min(coords[0]), np.max(coords[0])
+            x_min, x_max = np.min(coords[1]), np.max(coords[1])
+            
+            # Add padding around the bounding box
+            padding = 5
+            y_min = max(0, y_min - padding)
+            y_max = min(image.height - 1, y_max + padding)
+            x_min = max(0, x_min - padding)
+            x_max = min(image.width - 1, x_max + padding)
+            
+            # Color based on clothing type
+            if selected_clothing and selected_clothing.lower() == 'skirt':
+                border_color = (255, 20, 147, 255)  # Deep pink
+            elif selected_clothing and selected_clothing.lower() == 'dress':
+                border_color = (138, 43, 226, 255)  # Blue violet
+            elif selected_clothing and selected_clothing.lower() == 'pants':
+                border_color = (255, 140, 0, 255)  # Dark orange
+            else:
+                border_color = (0, 255, 127, 255)  # Spring green
+            
+            # Draw border rectangle
+            draw = ImageDraw.Draw(image)
+            border_width = 3
+            
+            # Draw multiple rectangles for thicker border
+            for i in range(border_width):
+                draw.rectangle(
+                    [x_min - i, y_min - i, x_max + i, y_max + i],
+                    outline=border_color,
+                    width=1
+                )
+            
+            logger.info(f"Simple border created around clothing: ({x_min}, {y_min}) to ({x_max}, {y_max})")
+            
+        except Exception as e:
+            logger.error(f"Error creating simple border: {e}")
+            # If everything fails, just return original image
+
+    def process_multiple_images(self, image_bytes_list: list) -> list:
+        """
+        Process multiple images in batch for better efficiency.
+        Returns list of results for each image.
+        """
+        try:
+            results = []
+            
+            # Process images in parallel if possible
+            import concurrent.futures
+            from functools import partial
+            
+            # Use ThreadPoolExecutor for I/O bound operations
+            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+                # Submit all images for processing
+                future_to_index = {
+                    executor.submit(self.detect_clothing_with_segmentation, img_bytes): i 
+                    for i, img_bytes in enumerate(image_bytes_list)
+                }
+                
+                # Collect results in order
+                for future in concurrent.futures.as_completed(future_to_index):
+                    index = future_to_index[future]
+                    try:
+                        result = future.result()
+                        results.append((index, result))
+                    except Exception as e:
+                        logger.error(f"Error processing image {index}: {e}")
+                        results.append((index, {"error": str(e)}))
+            
+            # Sort results by original index
+            results.sort(key=lambda x: x[0])
+            return [result for _, result in results]
+            
+        except Exception as e:
+            logger.error(f"Error in batch processing: {e}")
+            # Fallback to sequential processing
+            return [self.detect_clothing_with_segmentation(img_bytes) for img_bytes in image_bytes_list]
 
 def detect_clothing_types_with_segmentation(image_bytes: bytes) -> dict:
     """Get clothing detection with full segmentation data for reuse."""
