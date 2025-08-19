@@ -831,15 +831,8 @@ class ClothingDetector:
                 if len(outline_coords[0]) > 0:
                     logger.info(f"Drawing {len(outline_coords[0])} outline pixels")
                     
-                    # Color based on clothing type
-                    if selected_clothing and selected_clothing.lower() == 'skirt':
-                        color = (255, 20, 147, 255)  # Deep pink for skirt
-                    elif selected_clothing and selected_clothing.lower() == 'dress':
-                        color = (138, 43, 226, 255)  # Blue violet for dress
-                    elif selected_clothing and selected_clothing.lower() == 'pants':
-                        color = (255, 140, 0, 255)  # Dark orange for pants
-                    else:
-                        color = (0, 255, 127, 255)  # Spring green for other
+                    # Color based on clothing type - теперь единый цвет для всех
+                    color = (34, 197, 94, 255)  # #22c55e для всех типов одежды
                     
                     # Draw smooth outline with anti-aliasing effect
                     for y, x in zip(outline_coords[0], outline_coords[1]):
@@ -890,15 +883,8 @@ class ClothingDetector:
     def _create_semi_transparent_overlay(self, image, mask_array, selected_clothing):
         """Create semi-transparent colored overlay for selected clothing."""
         try:
-            # Color based on clothing type
-            if selected_clothing and selected_clothing.lower() == 'skirt':
-                overlay_color = (255, 20, 147, 80)  # Deep pink with 30% opacity
-            elif selected_clothing and selected_clothing.lower() == 'dress':
-                overlay_color = (138, 43, 226, 80)  # Blue violet with 30% opacity
-            elif selected_clothing and selected_clothing.lower() == 'pants':
-                overlay_color = (255, 140, 0, 80)  # Dark orange with 30% opacity
-            else:
-                overlay_color = (0, 255, 127, 80)  # Spring green with 30% opacity
+            # Единый цвет для всех типов одежды
+            overlay_color = (34, 197, 94, 80)  # #22c55e с 30% прозрачности
             
             # Create overlay image
             overlay = Image.new('RGBA', image.size, (0, 0, 0, 0))
@@ -915,7 +901,7 @@ class ClothingDetector:
             # Copy result back to original image
             image.paste(result, (0, 0))
             
-            logger.info("Semi-transparent overlay created successfully")
+            logger.info("Semi-transparent overlay created successfully with unified color")
             
         except Exception as e:
             logger.error(f"Error creating overlay: {e}")
@@ -948,15 +934,8 @@ class ClothingDetector:
             x_min = max(0, x_min - padding)
             x_max = min(image.width - 1, x_max + padding)
             
-            # Color based on clothing type
-            if selected_clothing and selected_clothing.lower() == 'skirt':
-                border_color = (255, 20, 147, 255)  # Deep pink
-            elif selected_clothing and selected_clothing.lower() == 'dress':
-                border_color = (138, 43, 226, 255)  # Blue violet
-            elif selected_clothing and selected_clothing.lower() == 'pants':
-                border_color = (255, 140, 0, 255)  # Dark orange
-            else:
-                border_color = (0, 255, 127, 255)  # Spring green
+            # Color based on clothing type - теперь единый цвет для всех
+            border_color = (34, 197, 94, 255)  # #22c55e для всех типов одежды
             
             # Draw border rectangle
             draw = ImageDraw.Draw(image)
@@ -970,7 +949,7 @@ class ClothingDetector:
                     width=1
                 )
             
-            logger.info(f"Simple border created around clothing: ({x_min}, {y_min}) to ({x_max}, {y_max})")
+            logger.info(f"Simple border created around clothing: ({x_min}, {y_min}) to ({x_max}, {y_max}) with unified color")
             
         except Exception as e:
             logger.error(f"Error creating simple border: {e}")
