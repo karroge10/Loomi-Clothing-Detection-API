@@ -605,12 +605,21 @@ class ClothingDetector:
             return np.zeros_like(pred_seg, dtype=np.uint8)
     
     def _mask_to_base64(self, mask: np.ndarray) -> str:
-        """Convert numpy mask to base64 string."""
+        """Convert numpy mask to compressed base64 string."""
         try:
+            import gzip
+            
             # Convert mask to bytes
             mask_bytes = mask.tobytes()
+            
+            # Compress with gzip
+            compressed_bytes = gzip.compress(mask_bytes, compresslevel=9)
+            
             # Encode to base64
-            mask_base64 = base64.b64encode(mask_bytes).decode('utf-8')
+            mask_base64 = base64.b64encode(compressed_bytes).decode('utf-8')
+            
+            logger.info(f"Mask compressed: {len(mask_bytes)} -> {len(compressed_bytes)} bytes ({(1 - len(compressed_bytes)/len(mask_bytes))*100:.1f}% reduction)")
+            
             return mask_base64
         except Exception as e:
             logger.error(f"Error converting mask to base64: {e}")
