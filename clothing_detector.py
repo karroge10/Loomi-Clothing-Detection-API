@@ -601,11 +601,12 @@ class ClothingDetector:
             masks['all'] = self._mask_to_base64(all_clothing_mask)
             logger.info("All masks created successfully")
             
-            # Store pred_seg in cache for analyze endpoint
+            # Store pred_seg and original image in cache for analyze endpoint
             image_hash = self._get_image_hash(image_bytes)
             _segmentation_data_cache.set(image_hash, {
                 "pred_seg": pred_seg,
-                "image_size": list(image.size)
+                "image_size": list(image.size),
+                "original_image_bytes": image_bytes  # Store original image for background removal
             })
             
             return {
@@ -691,12 +692,13 @@ class ClothingDetector:
             # Use cached data
             pred_seg = cached_data["pred_seg"]
             image_size = cached_data["image_size"]
+            original_image_bytes = cached_data["original_image_bytes"]
             
             logger.info(f"Using cached segmentation data for hash: {image_hash[:8]}...")
             
-            # Create clothing-only image using segmentation visualization
-            clothing_only_image = self._create_segmentation_visualization(
-                pred_seg, image_size, selected_clothing
+            # Create real clothing-only image using original image and segmentation mask
+            clothing_only_image = self._create_real_clothing_only_image(
+                original_image_bytes, pred_seg, selected_clothing
             )
             
             # Get dominant color from the image
@@ -767,25 +769,15 @@ class ClothingDetector:
             # Return a simple colored square as fallback
             return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
 
-    def _create_real_clothing_only_image(self, original_image_base64: str, pred_seg: np.ndarray, selected_clothing: str = None) -> str:
+    def _create_real_clothing_only_image(self, original_image_bytes: bytes, pred_seg: np.ndarray, selected_clothing: str = None) -> str:
         """Create real clothing-only image using original image and segmentation mask."""
         try:
             from PIL import Image
             import base64
             from io import BytesIO
             
-            # Decode original image from base64
-            if original_image_base64.startswith('data:image/'):
-                # Remove data URL prefix
-                base64_data = original_image_base64.split(',')[1]
-            else:
-                base64_data = original_image_base64
-            
-            # Decode base64 to bytes
-            image_bytes = base64.b64decode(base64_data)
-            
-            # Load original image
-            original_image = Image.open(BytesIO(image_bytes))
+            # Load original image directly from bytes
+            original_image = Image.open(BytesIO(original_image_bytes))
             
             # Create mask for selected clothing or all clothing
             if selected_clothing:
