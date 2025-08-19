@@ -30,29 +30,9 @@ os.environ["OMP_NUM_THREADS"] = "4"  # Limit OpenMP threads
 os.environ["MKL_NUM_THREADS"] = "4"  # Limit MKL threads
 logger.info("🔧 CPU optimized for free tier (4 threads)")
 
-# API Key authentication for private access
-API_KEY = os.getenv("API_KEY", "your-secret-api-key-here")
-REQUIRE_AUTH = os.getenv("REQUIRE_AUTH", "true").lower() == "true"
-
-def verify_api_key(request: Request):
-    """Verify API key from request headers."""
-    if not REQUIRE_AUTH:
-        return True
-    
-    auth_header = request.headers.get("Authorization")
-    if not auth_header:
-        return False
-    
-    # Check if header starts with "Bearer " and has correct API key
-    if auth_header.startswith("Bearer "):
-        provided_key = auth_header[7:]  # Remove "Bearer " prefix
-        return provided_key == API_KEY
-    
-    return False
-
 app = FastAPI(
     title="Loomi Clothing Detection API", 
-    description="AI-powered clothing analysis and segmentation API (Private Access - API Key Required)",
+    description="AI-powered clothing analysis and segmentation API",
     version="1.0.0"
 )
 
@@ -129,13 +109,6 @@ async def detect_clothing(
     - processing_time: Time taken for detection
     """
     try:
-        # Verify API key for private access
-        if not verify_api_key(request):
-            raise HTTPException(
-                status_code=401, 
-                detail="Invalid or missing API key. Use Authorization: Bearer YOUR_API_KEY"
-            )
-        
         # Get user ID for rate limiting
         logger.info("Getting user ID for rate limiting...")
         user_id = get_user_id(request)
@@ -212,13 +185,6 @@ async def analyze_image(
     - clothing_only_image: Base64 PNG with transparent background
     """
     try:
-        # Verify API key for private access
-        if not verify_api_key(request):
-            raise HTTPException(
-                status_code=401, 
-                detail="Invalid or missing API key. Use Authorization: Bearer YOUR_API_KEY"
-            )
-        
         # Get user ID for rate limiting
         user_id = get_user_id(request)
         
@@ -291,13 +257,6 @@ async def analyze_image_download(
     - Returns: PNG file with transparent background
     """
     try:
-        # Verify API key for private access
-        if not verify_api_key(request):
-            raise HTTPException(
-                status_code=401, 
-                detail="Invalid or missing API key. Use Authorization: Bearer YOUR_API_KEY"
-            )
-        
         # Get user ID for rate limiting
         user_id = get_user_id(request)
         
