@@ -188,11 +188,33 @@ async def detect_clothing(
         result = detect_clothing_types_optimized(image_bytes)
         logger.info("Clothing detection completed successfully")
         
-        # Log response size for debugging
+        # Log detailed response size breakdown for debugging
         import json
+        
+        # Calculate size of each component
+        clothing_result_size = len(json.dumps(result.get('clothing_instances', []))) / 1024
+        masks_size = len(json.dumps(result.get('segmentation_data', {}).get('masks', {}))) / 1024
+        pred_seg_size = len(json.dumps(result.get('segmentation_data', {}).get('pred_seg', []))) / 1024
+        image_size_size = len(json.dumps(result.get('segmentation_data', {}).get('image_size', []))) / 1024
+        image_hash_size = len(json.dumps(result.get('segmentation_data', {}).get('image_hash', ''))) / 1024
+        
+        # Calculate other fields
+        other_fields = {k: v for k, v in result.items() if k not in ['clothing_instances', 'segmentation_data']}
+        other_fields_size = len(json.dumps(other_fields)) / 1024
+        
+        # Total size
         response_json = json.dumps(result)
         response_size_kb = len(response_json.encode('utf-8')) / 1024
-        logger.info(f"Response size: {response_size_kb:.1f} KB")
+        
+        logger.info("=== RESPONSE SIZE BREAKDOWN ===")
+        logger.info(f"clothing_instances: {clothing_result_size:.1f} KB")
+        logger.info(f"masks: {masks_size:.1f} KB")
+        logger.info(f"pred_seg: {pred_seg_size:.1f} KB")
+        logger.info(f"image_size: {image_size_size:.1f} KB")
+        logger.info(f"image_hash: {image_hash_size:.1f} KB")
+        logger.info(f"other_fields: {other_fields_size:.1f} KB")
+        logger.info(f"TOTAL: {response_size_kb:.1f} KB")
+        logger.info("================================")
         
         # Remove request from concurrent tracking
         logger.info("Removing request from concurrent tracking...")
