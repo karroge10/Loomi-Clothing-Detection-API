@@ -11,15 +11,21 @@ import uvicorn
 from config import config
 
 def main():
+    # Import config at the beginning
+    from config import config as api_config
+    
     parser = argparse.ArgumentParser(description="Start Loomi Clothing Detection API")
-    parser.add_argument("--host", default=config.host, help="Host to bind to")
-    parser.add_argument("--port", type=int, default=config.port, help="Port to bind to")
-    parser.add_argument("--workers", type=int, default=config.workers, help="Number of worker processes")
+    parser.add_argument("--host", default=api_config.host, help="Host to bind to")
+    parser.add_argument("--port", type=int, default=api_config.port, help="Port to bind to")
+    parser.add_argument("--workers", type=int, default=api_config.workers, help="Number of worker processes")
     parser.add_argument("--reload", action="store_true", help="Enable auto-reload for development")
     parser.add_argument("--config", help="Path to .env file")
     parser.add_argument("--huggingface", action="store_true", help="Optimize for Hugging Face Spaces")
     
     args = parser.parse_args()
+    
+    # Use local config variable
+    current_config = api_config
     
     # Load environment variables if specified
     if args.config:
@@ -29,7 +35,7 @@ def main():
         from importlib import reload
         import config
         reload(config)
-        config = config.config
+        current_config = config.config
     
     # Hugging Face Spaces optimization
     if args.huggingface:
@@ -41,7 +47,7 @@ def main():
         args.reload = False
     
     # Validate configuration
-    warnings = config.validate()
+    warnings = current_config.validate()
     if warnings:
         print("⚠️  Configuration warnings:")
         for warning in warnings:
@@ -50,14 +56,14 @@ def main():
     
     # Print startup information
     print("🎯 Loomi Clothing Detection API")
-    print(f"   Version: {config.version}")
+    print(f"   Version: {current_config.version}")
     print(f"   Host: {args.host}:{args.port}")
     print(f"   Workers: {args.workers}")
-    print(f"   Background workers: {config.num_workers}")
-    print(f"   Rate limit: {config.rate_limit_requests} req/min")
-    print(f"   Concurrent limit: {config.max_concurrent_requests}")
-    print(f"   File size limit: {config.max_upload_mb}MB")
-    print(f"   Hugging Face Space: {config.is_huggingface_space}")
+    print(f"   Background workers: {current_config.num_workers}")
+    print(f"   Rate limit: {current_config.rate_limit_requests} req/min")
+    print(f"   Concurrent limit: {current_config.max_concurrent_requests}")
+    print(f"   File size limit: {current_config.max_upload_mb}MB")
+    print(f"   Hugging Face Space: {current_config.is_huggingface_space}")
     print()
     
     # Start the server
@@ -68,7 +74,7 @@ def main():
             port=args.port,
             workers=args.workers if not args.reload else 1,
             reload=args.reload,
-            log_level=config.log_level.lower(),
+            log_level=current_config.log_level.lower(),
             access_log=True,
             use_colors=True
         )

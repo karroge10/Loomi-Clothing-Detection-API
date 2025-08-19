@@ -61,9 +61,12 @@ async def detect_clothing(
     """
     try:
         # Get user ID for rate limiting
+        logger.info("Getting user ID for rate limiting...")
         user_id = get_user_id(request)
+        logger.info(f"User ID obtained: {user_id}")
         
         # Check rate limit
+        logger.info("Checking rate limit...")
         if not await rate_limiter.check_rate_limit(user_id, "/clothing"):
             raise HTTPException(
                 status_code=429, 
@@ -71,6 +74,7 @@ async def detect_clothing(
             )
         
         # Check concurrent limit
+        logger.info("Checking concurrent limit...")
         if not await rate_limiter.check_concurrent_limit(user_id):
             raise HTTPException(
                 status_code=429, 
@@ -81,17 +85,24 @@ async def detect_clothing(
             raise HTTPException(status_code=400, detail="File must be an image")
         
         # Read file content once
+        logger.info("Reading file content...")
         image_bytes = await file.read()
+        logger.info(f"File size: {len(image_bytes)} bytes")
         
         # Add request to tracking after successful validation
+        logger.info("Adding request to rate limiter...")
         await rate_limiter.add_request(user_id, "/clothing", len(image_bytes))
         
         # Use the proper clothing detector from clothing_detector.py
+        logger.info("Importing clothing detector...")
         from clothing_detector import detect_clothing_types
         
+        logger.info("Starting clothing detection...")
         clothing_result = detect_clothing_types(image_bytes)
+        logger.info("Clothing detection completed successfully")
         
         # Remove request from concurrent tracking
+        logger.info("Removing request from concurrent tracking...")
         await rate_limiter.remove_request(user_id)
         
         return JSONResponse(clothing_result)
@@ -102,8 +113,12 @@ async def detect_clothing(
     except Exception as e:
         # Remove request from concurrent tracking on error
         if 'user_id' in locals():
+            logger.info("Removing request from concurrent tracking due to error...")
             await rate_limiter.remove_request(user_id)
         logger.error(f"Error in clothing detection: {e}")
+        logger.error(f"Error type: {type(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error in clothing detection: {str(e)}")
 
 @app.post("/analyze")

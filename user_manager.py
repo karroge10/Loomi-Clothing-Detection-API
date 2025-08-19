@@ -3,13 +3,13 @@ User management and identification for the Loomi Clothing Detection API.
 """
 import hashlib
 from typing import Optional
-from fastapi import Request, Depends
+from fastapi import Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 # Security
 security = HTTPBearer(auto_error=False)
 
-def get_user_id(request: Request, credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> str:
+def get_user_id(request: Request, credentials: Optional[HTTPAuthorizationCredentials] = None) -> str:
     """
     Extract user ID from request. 
     In production, validate JWT token.
