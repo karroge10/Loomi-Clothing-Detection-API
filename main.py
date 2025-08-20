@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Request
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import logging
@@ -7,9 +7,7 @@ from pydantic import BaseModel
 import traceback
 
 # Import our modules
-from rate_limiter import rate_limiter
 from config import config
-from user_manager import get_user_id
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
@@ -45,19 +43,18 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Increase request size limit for large segmentation data
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"]
+    allow_headers=["*"]
 )
 
 # Custom exception handler for better error handling
 @app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
+async def global_exception_handler(request, exc: Exception):
     logger.error(f"Global exception handler: {exc}")
     logger.error(f"Exception type: {type(exc)}")
     logger.error(f"Traceback: {traceback.format_exc()}")
@@ -144,8 +141,7 @@ def performance_stats():
 
 @app.post("/detect")
 async def detect_clothing(
-    file: UploadFile = File(...),
-    request: Request = None
+    file: UploadFile = File(...)
 ):
     """
     Detect clothing types in the uploaded image with segmentation data.
@@ -156,27 +152,6 @@ async def detect_clothing(
     - processing_time: Time taken for detection
     """
     try:
-        # Get user ID for rate limiting
-        logger.info("Getting user ID for rate limiting...")
-        user_id = get_user_id(request)
-        logger.info(f"User ID obtained: {user_id}")
-        
-        # Check rate limit
-        logger.info("Checking rate limit...")
-        if not await rate_limiter.check_rate_limit(user_id, "/detect"):
-            raise HTTPException(
-                status_code=429, 
-                detail=f"Rate limit exceeded. Maximum {config.rate_limit_requests} requests per {config.rate_limit_window} seconds."
-            )
-        
-        # Check concurrent limit
-        logger.info("Checking concurrent limit...")
-        if not await rate_limiter.check_concurrent_limit(user_id):
-            raise HTTPException(
-                status_code=429, 
-                detail=f"Concurrent request limit exceeded. Maximum {config.max_concurrent_requests} concurrent requests."
-            )
-        
         if not file.content_type.startswith("image/"):
             raise HTTPException(status_code=400, detail="File must be an image")
         
@@ -184,10 +159,6 @@ async def detect_clothing(
         logger.info("Reading file content...")
         image_bytes = await file.read()
         logger.info(f"File size: {len(image_bytes)} bytes")
-        
-        # Add request to tracking after successful validation
-        logger.info("Adding request to rate limiter...")
-        await rate_limiter.add_request(user_id, "/detect", len(image_bytes))
         
         # Use the optimized clothing detector from clothing_detector.py
         logger.info("Importing clothing detector...")
@@ -225,20 +196,12 @@ async def detect_clothing(
         logger.info(f"TOTAL: {response_size_kb:.1f} KB")
         logger.info("================================")
         
-        # Remove request from concurrent tracking
-        logger.info("Removing request from concurrent tracking...")
-        await rate_limiter.remove_request(user_id)
-        
         return JSONResponse(result)
         
     except HTTPException:
         # Re-raise HTTP exceptions
         raise
     except Exception as e:
-        # Remove request from concurrent tracking on error
-        if 'user_id' in locals():
-            logger.info("Removing request from concurrent tracking due to error...")
-            await rate_limiter.remove_request(user_id)
         logger.error(f"Error in clothing detection: {e}")
         logger.error(f"Error type: {type(e)}")
         import traceback
@@ -247,41 +210,17 @@ async def detect_clothing(
 
 @app.post("/analyze")
 async def analyze_image(
-    request: SegmentationAnalysisRequest,
-    http_request: Request = None
+    request: SegmentationAnalysisRequest
 ):
     """
     Analyze image using pre-computed segmentation data.
     Much faster than full analysis.
     """
     try:
-        # Get user ID for rate limiting
-        user_id = get_user_id(http_request)
-        
-        # Check rate limit
-        if not await rate_limiter.check_rate_limit(user_id, "/analyze"):
-            raise HTTPException(
-                status_code=429, 
-                detail=f"Rate limit exceeded. Maximum {config.rate_limit_requests} requests per {config.rate_limit_window} seconds."
-            )
-        
-        # Check concurrent limit
-        if not await rate_limiter.check_concurrent_limit(user_id):
-            raise HTTPException(
-                status_code=429, 
-                detail=f"Concurrent request limit exceeded. Maximum {config.max_concurrent_requests} concurrent requests."
-            )
-        
-        # Add request to tracking
-        await rate_limiter.add_request(user_id, "/analyze", 0)
-        
         # Use pre-computed segmentation data
         from clothing_detector import analyze_from_segmentation
         
         result = analyze_from_segmentation(request.segmentation_data, request.selected_clothing)
-        
-        # Remove request from concurrent tracking
-        await rate_limiter.remove_request(user_id)
         
         return JSONResponse(result)
         
@@ -289,8 +228,5 @@ async def analyze_image(
         # Re-raise HTTP exceptions
         raise
     except Exception as e:
-        # Remove request from concurrent tracking on error
-        if 'user_id' in locals():
-            await rate_limiter.remove_request(user_id)
         logger.error(f"Error in analysis with segmentation: {e}")
         raise HTTPException(status_code=500, detail=f"Error in analysis with segmentation: {str(e)}")

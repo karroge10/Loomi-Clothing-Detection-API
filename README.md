@@ -17,9 +17,7 @@ AI-powered clothing analysis and segmentation API, optimized for Hugging Face Sp
 
 - **🧠 AI-Powered**: Uses Segformer model for clothing detection
 - **🖼️ Image Processing**: Background removal and dominant color detection
-- **⚡ Async**: Non-blocking model loading and request processing
-- **🚦 Rate Limiting**: Per-user request limits and concurrent control
-- **👥 Multi-User**: Supports multiple users with isolation
+- **⚡ Fast**: Optimized for single-request processing
 - **🔧 HF Optimized**: Built specifically for Hugging Face Spaces
 
 ## 🚀 Quick Start
@@ -28,10 +26,9 @@ AI-powered clothing analysis and segmentation API, optimized for Hugging Face Sp
 
 - `GET /` - API overview
 - `GET /health` - System health and status
-- `GET /user/stats` - User usage statistics
-- `POST /clothing` - Detect clothing types and coordinates
-- `POST /analyze` - Full analysis with color detection
-- `POST /analyze/download` - Download processed images
+- `GET /performance` - Performance statistics and cache info
+- `POST /detect` - Detect clothing types with segmentation data
+- `POST /analyze` - Analyze selected clothing using segmentation data
 
 ### Usage Example
 
@@ -41,27 +38,37 @@ import requests
 # Upload image for clothing detection
 with open('image.jpg', 'rb') as f:
     response = requests.post(
-        'https://your-hf-space.hf.space/clothing',
+        'https://your-hf-space.hf.space/detect',
         files={'file': f}
     )
     result = response.json()
     print(result)
+    
+    # Use segmentation data for analysis
+    if 'segmentation_data' in result:
+        analyze_response = requests.post(
+            'https://your-hf-space.hf.space/analyze',
+            json={
+                'segmentation_data': result['segmentation_data'],
+                'selected_clothing': 'shirt'
+            }
+        )
+        analysis = analyze_response.json()
+        print(analysis)
 ```
 
 ## 🏗️ Architecture
 
 - **FastAPI**: Modern, fast web framework
-- **Async Processing**: Non-blocking operations
-- **Rate Limiting**: User-based request control
+- **Efficient Processing**: Optimized for single requests
 - **Model Management**: Efficient ML model loading
-- **Queue System**: Background task processing
+- **Caching**: Smart caching for repeated images
 
 ## 🔧 Configuration
 
 The API automatically detects Hugging Face Spaces and applies optimizations:
 
 - Single worker process
-- Conservative rate limits (15 req/min, 5 concurrent)
 - Optimized cache sizes
 - HF-specific environment variables
 
@@ -72,6 +79,16 @@ Perfect for:
 - Web applications
 - E-commerce platforms
 - Fashion analysis tools
+
+## 🚀 Running the API
+
+```bash
+# Simple startup
+python run.py
+
+# Or with uvicorn directly
+uvicorn main:app --host 0.0.0.0 --port 7860
+```
 
 ## 🤝 Contributing
 
@@ -84,4 +101,4 @@ Perfect for:
 
 **Made with ❤️ by the Loomi Team**
 
-*AI-powered clothing analysis, production ready! 🎯*
+*AI-powered clothing analysis, simplified and ready! 🎯*
