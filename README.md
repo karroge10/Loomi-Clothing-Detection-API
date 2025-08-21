@@ -1,3 +1,14 @@
+---
+title: Loomi Clothing Detection API
+emoji: 🏢
+colorFrom: indigo
+colorTo: red
+sdk: docker
+sdk_version: "1.0.0"
+app_file: main.py
+pinned: false
+---
+
 # Loomi Clothing Detection API 🚀
 
 AI-powered clothing analysis and segmentation API, optimized for Hugging Face Spaces.
