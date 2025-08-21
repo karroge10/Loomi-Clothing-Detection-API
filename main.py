@@ -82,28 +82,88 @@ def read_root():
         with open("demo.html", "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
     except FileNotFoundError:
-        # Fallback to JSON if demo.html not found
-        return {
-            "name": "Loomi Clothing Detection API",
-            "version": "1.1.0",
-            "status": "running",
-            "endpoints": [
-                "/detect",           # Main endpoint for clothing detection
-                "/analyze",          # Analysis with data reuse
-                "/health",           # Health check
-                "/performance"       # Performance statistics
-            ],
-            "docs": "/docs",
-            "workflow": {
-                "step1": "POST /detect - upload image and get clothing types with segmentation",
-                "step2": "POST /analyze - analyze selected clothing type (remove background, get color)"
-            },
-            "optimization_tips": [
-                "Use /detect to get segmentation data",
-                "Then use /analyze with this data for fast analysis",
-                "This avoids re-running the ML model"
-            ]
-        }
+        # Fallback to HTML if demo.html not found
+        fallback_html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Loomi Clothing Detection API</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+                .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                h1 { color: #333; }
+                .endpoint { background: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 5px; border-left: 4px solid #007bff; }
+                .method { color: #007bff; font-weight: bold; }
+                .url { font-family: monospace; background: #e9ecef; padding: 2px 6px; border-radius: 3px; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>🚀 Loomi Clothing Detection API</h1>
+                <p><strong>Version:</strong> 1.1.0</p>
+                <p><strong>Status:</strong> Running</p>
+                
+                <h2>📡 Available Endpoints</h2>
+                
+                <div class="endpoint">
+                    <div class="method">GET</div>
+                    <div class="url">/</div>
+                    <p>This page - API overview</p>
+                </div>
+                
+                <div class="endpoint">
+                    <div class="method">POST</div>
+                    <div class="url">/detect</div>
+                    <p>Upload image and get clothing types with segmentation</p>
+                </div>
+                
+                <div class="endpoint">
+                    <div class="method">POST</div>
+                    <div class="url">/analyze</div>
+                    <p>Analyze selected clothing using segmentation data</p>
+                </div>
+                
+                <div class="endpoint">
+                    <div class="method">GET</div>
+                    <div class="url">/health</div>
+                    <p>Health check</p>
+                </div>
+                
+                <div class="endpoint">
+                    <div class="method">GET</div>
+                    <div class="url">/performance</div>
+                    <p>Performance statistics</p>
+                </div>
+                
+                <div class="endpoint">
+                    <div class="method">GET</div>
+                    <div class="url">/api</div>
+                    <p>API information in JSON format</p>
+                </div>
+                
+                <div class="endpoint">
+                    <div class="method">GET</div>
+                    <div class="url">/docs</div>
+                    <p>Interactive API documentation</p>
+                </div>
+                
+                <h2>🔄 Workflow</h2>
+                <ol>
+                    <li><strong>Step 1:</strong> POST /detect - Upload image and get clothing types with segmentation</li>
+                    <li><strong>Step 2:</strong> POST /analyze - Analyze selected clothing type (remove background, get color)</li>
+                </ol>
+                
+                <h2>💡 Optimization Tips</h2>
+                <ul>
+                    <li>Use /detect to get segmentation data</li>
+                    <li>Then use /analyze with this data for fast analysis</li>
+                    <li>This avoids re-running the ML model</li>
+                </ul>
+            </div>
+        </body>
+        </html>
+        """
+        return HTMLResponse(content=fallback_html)
 
 @app.get("/demo", response_class=HTMLResponse)
 def serve_demo():
