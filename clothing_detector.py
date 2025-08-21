@@ -733,9 +733,9 @@ class ClothingDetector:
         try:
             # Map clothing type to class ID
             class_mapping = {
-                'Hat': 0, 'Hair': 1, 'Glove': 2, 'Sunglasses': 3, 'Upper-clothes': 4,
+                'Hat': 1, 'Sunglasses': 3, 'Upper-clothes': 4,
                 'Skirt': 5, 'Pants': 6, 'Dress': 7, 'Belt': 8, 'Left-shoe': 9, 'Right-shoe': 10,
-                'Left-sock': 11, 'Right-sock': 12, 'Left-bag': 13, 'Right-bag': 14, 'Scarf': 15
+                'Bag': 16, 'Scarf': 17
             }
             
             class_id = class_mapping.get(clothing_type)
@@ -750,10 +750,13 @@ class ClothingDetector:
     def _get_all_clothing_mask(self, pred_seg: np.ndarray) -> np.ndarray:
         """Get combined mask for all clothing types."""
         try:
-            # Combine all clothing class IDs (0-15)
+            # Only include actual clothing classes (exclude background, body parts, etc.)
+            clothing_class_ids = [1, 3, 4, 5, 6, 7, 8, 9, 10, 16, 17]  # Hat, Sunglasses, Upper-clothes, Skirt, Pants, Dress, Belt, Left-shoe, Right-shoe, Bag, Scarf
+            
             all_clothing_mask = np.zeros_like(pred_seg, dtype=np.uint8)
-            for class_id in range(16):  # 0-15 are clothing classes
+            for class_id in clothing_class_ids:
                 all_clothing_mask = np.logical_or(all_clothing_mask, pred_seg == class_id)
+            
             return all_clothing_mask.astype(np.uint8)
         except Exception as e:
             logger.error(f"Error getting all clothing mask: {e}")
@@ -772,8 +775,6 @@ class ClothingDetector:
             
             # Encode to base64
             mask_base64 = base64.b64encode(compressed_bytes).decode('utf-8')
-            
-            logger.info(f"Mask compressed: {len(mask_bytes)} -> {len(compressed_bytes)} bytes ({(1 - len(compressed_bytes)/len(mask_bytes))*100:.1f}% reduction)")
             
             return mask_base64
         except Exception as e:
