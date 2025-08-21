@@ -13,6 +13,14 @@ short_description: Clothing segmentation and background removal
 
 AI-powered clothing analysis and segmentation API, optimized for Hugging Face Spaces.
 
+## ⚠️ **Important Note for Hugging Face Demo**
+
+**This is currently a demo version on Hugging Face Spaces with limitations:**
+- **Only 1 request at a time** (Hugging Face Spaces restriction)
+- **If you see "offline" status** → wait until current request completes
+- **Try again in a few minutes** if the Space appears busy
+- **For production use** → deploy to your own server with higher concurrency
+
 ## ✨ Features
 
 - **🧠 AI-Powered**: Uses Segformer model for clothing detection

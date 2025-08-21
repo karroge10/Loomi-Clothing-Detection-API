@@ -89,6 +89,17 @@ def read_root():
             <p><strong>Version:</strong> 1.1.0</p>
             <p><strong>Status:</strong> Running</p>
             
+            <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; padding: 15px; margin: 20px 0;">
+                <h3>⚠️ Important Note</h3>
+                <p><strong>This is a demo version on Hugging Face Spaces with limitations:</strong></p>
+                <ul>
+                    <li><strong>Only 1 request at a time</strong> (Hugging Face Spaces restriction)</li>
+                    <li><strong>If you see "offline" status</strong> → wait until current request completes</li>
+                    <li><strong>Try again in a few minutes</strong> if the Space appears busy</li>
+                    <li><strong>For production use</strong> → deploy to your own server with higher concurrency</li>
+                </ul>
+            </div>
+            
             <h2>📡 Available Endpoints</h2>
             
             <div class="endpoint">
