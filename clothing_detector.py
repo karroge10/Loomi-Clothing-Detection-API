@@ -490,10 +490,29 @@ class ClothingDetector:
             
             # Encode to base64
             buffer = BytesIO()
-            clothing_image.save(buffer, format='PNG')
-            img_str = base64.b64encode(buffer.getvalue()).decode()
             
-            return f"data:image/png;base64,{img_str}"
+            # Smart compression: Use WebP format for much better compression than PNG
+            try:
+                # WebP with quality 85 (excellent quality, great compression)
+                clothing_image.save(buffer, format='WEBP', quality=85, method=6, lossless=False)
+                img_str = base64.b64encode(buffer.getvalue()).decode()
+                file_size_kb = len(buffer.getvalue()) / 1024
+                logger.info(f"✅ Clothing image WebP compression: {file_size_kb:.1f} KB")
+                return f"data:image/webp;base64,{img_str}"
+                
+            except Exception as webp_error:
+                logger.info(f"WebP not available, falling back to optimized PNG: {webp_error}")
+                
+                # Fallback to optimized PNG with compression
+                buffer.seek(0)
+                buffer.truncate()
+                
+                # PNG with maximum compression
+                clothing_image.save(buffer, format='PNG', optimize=True, compress_level=9)
+                img_str = base64.b64encode(buffer.getvalue()).decode()
+                file_size_kb = len(buffer.getvalue()) / 1024
+                logger.info(f"✅ Clothing image PNG compression: {file_size_kb:.1f} KB")
+                return f"data:image/png;base64,{img_str}"
             
         except Exception as e:
             logger.error(f"Error in creating clothing-only image: {str(e)}")
@@ -563,8 +582,27 @@ class ClothingDetector:
             from io import BytesIO
             
             buffer = BytesIO()
-            image.save(buffer, format='PNG')
-            original_image_base64 = base64.b64encode(buffer.getvalue()).decode()
+            
+            # Smart compression: Use WebP format for much better compression than PNG
+            try:
+                # WebP with quality 85 (excellent quality, great compression)
+                image.save(buffer, format='WEBP', quality=85, method=6, lossless=False)
+                original_image_base64 = base64.b64encode(buffer.getvalue()).decode()
+                file_size_kb = len(buffer.getvalue()) / 1024
+                logger.info(f"✅ Original image WebP compression: {file_size_kb:.1f} KB")
+                
+            except Exception as webp_error:
+                logger.info(f"WebP not available, falling back to optimized PNG: {webp_error}")
+                
+                # Fallback to optimized PNG with compression
+                buffer.seek(0)
+                buffer.truncate()
+                
+                # PNG with maximum compression
+                image.save(buffer, format='PNG', optimize=True, compress_level=9)
+                original_image_base64 = base64.b64encode(buffer.getvalue()).decode()
+                file_size_kb = len(buffer.getvalue()) / 1024
+                logger.info(f"✅ Original image PNG compression: {file_size_kb:.1f} KB")
             
             # Create highlighted images for each clothing type
             highlighted_images = {}
@@ -604,10 +642,10 @@ class ClothingDetector:
                     "pred_seg": pred_seg.tolist(),  # Convert numpy array to list for JSON
                     "image_size": list(image.size),  # Convert tuple to list for JSON
                     "image_hash": self._get_image_hash(image_bytes),
-                    "original_image": f"data:image/png;base64,{original_image_base64}"  # Add original image
+                    "original_image": f"data:image/webp;base64,{original_image_base64}"  # Add original image
                 },
                 "highlighted_images": highlighted_images,  # Images with colored outlines
-                "original_image": f"data:image/png;base64,{original_image_base64}"  # Original image for display
+                "original_image": f"data:image/webp;base64,{original_image_base64}"  # Original image for display
             }
         except Exception as e:
             logger.error(f"Error in clothing detection with segmentation: {e}")
@@ -841,10 +879,29 @@ class ClothingDetector:
             
             # Convert to base64
             buffer = BytesIO()
-            result.save(buffer, format='PNG')
-            img_str = base64.b64encode(buffer.getvalue()).decode()
             
-            return f"data:image/png;base64,{img_str}"
+            # Smart compression: Use WebP format for much better compression than PNG
+            try:
+                # WebP with quality 85 (excellent quality, great compression)
+                result.save(buffer, format='WEBP', quality=85, method=6, lossless=False)
+                img_str = base64.b64encode(buffer.getvalue()).decode()
+                file_size_kb = len(buffer.getvalue()) / 1024
+                logger.info(f"✅ Segmentation visualization WebP compression: {file_size_kb:.1f} KB")
+                return f"data:image/webp;base64,{img_str}"
+                
+            except Exception as webp_error:
+                logger.info(f"WebP not available, falling back to optimized PNG: {webp_error}")
+                
+                # Fallback to optimized PNG with compression
+                buffer.seek(0)
+                buffer.truncate()
+                
+                # PNG with maximum compression
+                result.save(buffer, format='PNG', optimize=True, compress_level=9)
+                img_str = base64.b64encode(buffer.getvalue()).decode()
+                file_size_kb = len(buffer.getvalue()) / 1024
+                logger.info(f"✅ Segmentation visualization PNG compression: {file_size_kb:.1f} KB")
+                return f"data:image/png;base64,{img_str}"
             
         except Exception as e:
             logger.error(f"Error creating segmentation visualization: {e}")
@@ -861,21 +918,16 @@ class ClothingDetector:
             # Load original image directly from bytes
             original_image = Image.open(BytesIO(original_image_bytes))
             
-            # Optimize image size for faster color analysis while maintaining quality
-            # Large images can slow down color analysis significantly
-            if original_image.width > 800 or original_image.height > 800:
-                # Calculate optimal size (balance between quality and speed)
-                max_dim = max(original_image.width, original_image.height)
-                if max_dim > 2000:
-                    target_size = (800, 800)  # Very large images
-                elif max_dim > 1200:
-                    target_size = (1000, 1000)  # Large images
-                else:
-                    target_size = (1200, 1200)  # Medium-large images
-                
-                # Resize while maintaining aspect ratio
-                original_image.thumbnail(target_size, Image.LANCZOS)
-                logger.info(f"🔄 Optimized image size from {original_image.width}x{original_image.height} to {target_size[0]}x{target_size[1]} for faster processing")
+            # Smart image size optimization for better compression
+            # Balance between quality and file size
+            max_dim = max(original_image.width, original_image.height)
+            if max_dim > 1200:
+                # Scale down large images for better compression
+                scale_factor = 1200 / max_dim
+                new_width = int(original_image.width * scale_factor)
+                new_height = int(original_image.height * scale_factor)
+                original_image = original_image.resize((new_width, new_height), Image.LANCZOS)
+                logger.info(f"🔄 Optimized image size to {new_width}x{new_height} for better compression")
             
             # Create mask for selected clothing or all clothing
             if selected_clothing:
@@ -956,12 +1008,32 @@ class ClothingDetector:
             # Convert back to PIL image
             result = Image.fromarray(result_array, 'RGBA')
             
-            # Convert to base64
+            # Smart compression: Use WebP format for much better compression than PNG
+            # WebP provides excellent quality with much smaller file sizes
             buffer = BytesIO()
-            result.save(buffer, format='PNG')
-            img_str = base64.b64encode(buffer.getvalue()).decode()
             
-            return f"data:image/png;base64,{img_str}"
+            # Try WebP first (much better compression)
+            try:
+                # WebP with quality 85 (excellent quality, great compression)
+                result.save(buffer, format='WEBP', quality=85, method=6, lossless=False)
+                img_str = base64.b64encode(buffer.getvalue()).decode()
+                file_size_kb = len(buffer.getvalue()) / 1024
+                logger.info(f"✅ WebP compression: {file_size_kb:.1f} KB")
+                return f"data:image/webp;base64,{img_str}"
+                
+            except Exception as webp_error:
+                logger.info(f"WebP not available, falling back to optimized PNG: {webp_error}")
+                
+                # Fallback to optimized PNG with compression
+                buffer.seek(0)
+                buffer.truncate()
+                
+                # PNG with maximum compression
+                result.save(buffer, format='PNG', optimize=True, compress_level=9)
+                img_str = base64.b64encode(buffer.getvalue()).decode()
+                file_size_kb = len(buffer.getvalue()) / 1024
+                logger.info(f"✅ PNG compression: {file_size_kb:.1f} KB")
+                return f"data:image/png;base64,{img_str}"
             
         except Exception as e:
             logger.error(f"Error creating real clothing-only image: {e}")
@@ -1113,20 +1185,48 @@ class ClothingDetector:
             
             # Convert to base64
             buffer = BytesIO()
-            highlighted_image.save(buffer, format='PNG')
-            img_str = base64.b64encode(buffer.getvalue()).decode()
             
-            logger.info("Highlight image created successfully")
-            return f"data:image/png;base64,{img_str}"
+            # Smart compression: Use WebP format for much better compression than PNG
+            try:
+                # WebP with quality 85 (excellent quality, great compression)
+                highlighted_image.save(buffer, format='WEBP', quality=85, method=6, lossless=False)
+                img_str = base64.b64encode(buffer.getvalue()).decode()
+                file_size_kb = len(buffer.getvalue()) / 1024
+                logger.info(f"✅ Highlight image WebP compression: {file_size_kb:.1f} KB")
+                return f"data:image/webp;base64,{img_str}"
+                
+            except Exception as webp_error:
+                logger.info(f"WebP not available, falling back to optimized PNG: {webp_error}")
+                
+                # Fallback to optimized PNG with compression
+                buffer.seek(0)
+                buffer.truncate()
+                
+                # PNG with maximum compression
+                highlighted_image.save(buffer, format='PNG', optimize=True, compress_level=9)
+                img_str = base64.b64encode(buffer.getvalue()).decode()
+                file_size_kb = len(buffer.getvalue()) / 1024
+                logger.info(f"✅ Highlight image PNG compression: {file_size_kb:.1f} KB")
+                return f"data:image/png;base64,{img_str}"
             
         except Exception as e:
             logger.error(f"Error creating highlighted image: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             # Fallback to original image
             buffer = BytesIO()
-            image.save(buffer, format='PNG')
-            img_str = base64.b64encode(buffer.getvalue()).decode()
-            return f"data:image/png;base64,{img_str}"
+            
+            # Try WebP first for fallback too
+            try:
+                image.save(buffer, format='WEBP', quality=85, method=6, lossless=False)
+                img_str = base64.b64encode(buffer.getvalue()).decode()
+                return f"data:image/webp;base64,{img_str}"
+            except:
+                # Final fallback to PNG
+                buffer.seek(0)
+                buffer.truncate()
+                image.save(buffer, format='PNG', optimize=True, compress_level=9)
+                img_str = base64.b64encode(buffer.getvalue()).decode()
+                return f"data:image/png;base64,{img_str}"
     
     def _create_semi_transparent_overlay(self, image, mask_array, selected_clothing):
         """Create semi-transparent colored overlay for selected clothing."""

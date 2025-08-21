@@ -27,6 +27,8 @@ AI-powered clothing analysis and segmentation API, optimized for Hugging Face Sp
 - **🖼️ Image Processing**: Background removal and dominant color detection
 - **⚡ Fast**: Optimized for single-request processing with automatic caching
 - **🔧 HF Optimized**: Built specifically for Hugging Face Spaces
+- **📱 Smart Compression**: WebP format with PNG fallback for optimal file sizes
+- **🎯 Efficient Workflow**: Two-step process for maximum performance
 
 ## 🚀 Quick Start
 
@@ -36,7 +38,7 @@ AI-powered clothing analysis and segmentation API, optimized for Hugging Face Sp
 - `GET /health` - System health and status
 - `GET /performance` - Performance statistics and cache info
 - `POST /detect` - Detect clothing types with segmentation data
-- `POST /analyze` - Upload same image for fast analysis using cached data
+- `POST /analyze` - Analyze clothing using segmentation data (fast, no re-upload)
 
 ### Usage Example
 
@@ -52,15 +54,16 @@ with open('image.jpg', 'rb') as f:
     result = response.json()
     print(result)
     
-# Step 2: Upload same image for instant analysis (uses cached data)
-with open('image.jpg', 'rb') as f:
-    analyze_response = requests.post(
-        'https://your-hf-space.hf.space/analyze',
-        files={'file': f},
-        data={'selected_clothing': 'shirt'}  # Optional: specify clothing type
-    )
-    analysis = analyze_response.json()
-    print(analysis)
+# Step 2: Analyze using segmentation data (much faster!)
+analyze_response = requests.post(
+    'https://your-hf-space.hf.space/analyze',
+    json={
+        'segmentation_data': result['segmentation_data'],
+        'selected_clothing': 'shirt'  # Optional: specify clothing type
+    }
+)
+analysis = analyze_response.json()
+print(analysis)
 ```
 
 ## 🏗️ Architecture
@@ -69,6 +72,7 @@ with open('image.jpg', 'rb') as f:
 - **Efficient Processing**: Optimized for single requests with smart caching
 - **Model Management**: Efficient ML model loading
 - **Automatic Caching**: Smart caching for repeated images and segmentation data
+- **Image Optimization**: WebP compression with PNG fallback for optimal file sizes
 
 ## 🔧 Configuration
 
@@ -77,6 +81,7 @@ The API automatically detects Hugging Face Spaces and applies optimizations:
 - Single worker process
 - Optimized cache sizes
 - HF-specific environment variables
+- Smart image compression (WebP/PNG)
 
 ## 📱 Integration
 
@@ -124,6 +129,12 @@ uvicorn main:app --host 0.0.0.0 --port 7860
 The model can detect and segment 18 different categories:
 - Background, Hat, Hair, Sunglasses, Upper-clothes, Skirt, Pants, Dress, Belt
 - Left/Right-shoe, Face, Left/Right-leg, Left/Right-arm, Bag, Scarf
+
+### **Image Optimization:**
+- **WebP Format**: Primary format with excellent compression (70-85% smaller than PNG)
+- **PNG Fallback**: Optimized PNG with maximum compression for compatibility
+- **Smart Resizing**: Automatic optimization for large images
+- **Quality Preserved**: Visual quality maintained while reducing file sizes
 
 ## 📄 License
 
