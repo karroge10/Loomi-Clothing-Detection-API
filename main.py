@@ -1,10 +1,9 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import logging
 from typing import Optional
-from pydantic import BaseModel
 import traceback
 import os
 
@@ -14,14 +13,6 @@ from config import config
 # Logging setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Pydantic models
-class SegmentationAnalysisRequest(BaseModel):
-    segmentation_data: dict
-    selected_clothing: Optional[str] = None
-    
-    class Config:
-        str_max_length = 10_000_000  # 10MB limit for segmentation data
 
 # Pre-load models on startup for faster first request
 logger.info("🚀 Pre-loading ML models for faster response...")
@@ -150,14 +141,15 @@ def read_root():
                 <h2>🔄 Workflow</h2>
                 <ol>
                     <li><strong>Step 1:</strong> POST /detect - Upload image and get clothing types with segmentation</li>
-                    <li><strong>Step 2:</strong> POST /analyze - Analyze selected clothing type (remove background, get color)</li>
+                    <li><strong>Step 2:</strong> POST /analyze - Upload same image for fast analysis (automatically uses cached data)</li>
                 </ol>
                 
-                <h2>💡 Optimization Tips</h2>
+                <h2>💡 How It Works</h2>
                 <ul>
-                    <li>Use /detect to get segmentation data</li>
-                    <li>Then use /analyze with this data for fast analysis</li>
-                    <li>This avoids re-running the ML model</li>
+                    <li><strong>/detect</strong> - Analyzes image and caches segmentation data</li>
+                    <li><strong>/analyze</strong> - Upload same image for instant analysis using cached data</li>
+                    <li><strong>Automatic caching</strong> - No need to manually pass segmentation data</li>
+                    <li><strong>Smart optimization</strong> - Avoids re-running ML models when possible</li>
                 </ul>
             </div>
         </body>
@@ -183,19 +175,20 @@ def api_info():
         "status": "running",
         "endpoints": [
             "/detect",           # Main endpoint for clothing detection
-            "/analyze",          # Analysis with data reuse
+            "/analyze",          # Analysis with automatic caching
             "/health",           # Health check
             "/performance"       # Performance statistics
         ],
         "docs": "/docs",
         "workflow": {
-            "step1": "POST /detect - upload image and get clothing types with segmentation",
-            "step2": "POST /analyze - analyze selected clothing type (remove background, get color)"
+            "step1": "POST /detect - Upload image and get clothing types with segmentation",
+            "step2": "POST /analyze - Upload same image for fast analysis (uses cached data)"
         },
-        "optimization_tips": [
-            "Use /detect to get segmentation data",
-            "Then use /analyze with this data for fast analysis",
-            "This avoids re-running the ML model"
+        "how_it_works": [
+            "/detect - Analyzes image and caches segmentation data",
+            "/analyze - Upload same image for instant analysis using cached data",
+            "Automatic caching - No need to manually pass segmentation data",
+            "Smart optimization - Avoids re-running ML models when possible"
         ]
     }
 
@@ -316,17 +309,40 @@ async def detect_clothing(
 
 @app.post("/analyze")
 async def analyze_image(
-    request: SegmentationAnalysisRequest
+    file: UploadFile = File(...),
+    selected_clothing: str = Form(None)
 ):
     """
-    Analyze image using pre-computed segmentation data.
-    Much faster than full analysis.
+    Analyze image using cached segmentation data.
+    Much faster than full analysis - automatically uses cached data from /detect.
     """
     try:
-        # Use pre-computed segmentation data
-        from clothing_detector import analyze_from_segmentation
+        if not file.content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail="File must be an image")
         
-        result = analyze_from_segmentation(request.segmentation_data, request.selected_clothing)
+        # Read file content
+        image_bytes = await file.read()
+        
+        # Use the clothing detector to analyze with cached data
+        from clothing_detector import detect_clothing_types_optimized, analyze_from_segmentation
+        
+        # First, get or create segmentation data (this will use cache if available)
+        detection_result = detect_clothing_types_optimized(image_bytes)
+        
+        # Extract segmentation data
+        segmentation_data = detection_result.get('segmentation_data', {})
+        if not segmentation_data:
+            raise HTTPException(status_code=400, detail="No segmentation data available for analysis")
+        
+        # Now analyze using the segmentation data
+        result = analyze_from_segmentation(segmentation_data, selected_clothing)
+        
+        # Add some metadata
+        result.update({
+            "analysis_note": "Used cached segmentation data for fast analysis",
+            "image_hash": segmentation_data.get('image_hash', ''),
+            "available_clothing": detection_result.get('clothing_instances', [])
+        })
         
         return JSONResponse(result)
         
@@ -334,5 +350,5 @@ async def analyze_image(
         # Re-raise HTTP exceptions
         raise
     except Exception as e:
-        logger.error(f"Error in analysis with segmentation: {e}")
-        raise HTTPException(status_code=500, detail=f"Error in analysis with segmentation: {str(e)}")
+        logger.error(f"Error in analysis: {e}")
+        raise HTTPException(status_code=500, detail=f"Error in analysis: {str(e)}")
