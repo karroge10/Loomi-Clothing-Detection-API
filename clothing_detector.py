@@ -1,3 +1,25 @@
+"""
+Loomi Clothing Detection API - Core ML Module
+=============================================
+
+This module provides clothing detection and segmentation using the Segformer model.
+
+Model Attribution:
+- Base Model: Segformer B2 for Clothing Segmentation
+- Source: mattmdjaga/segformer_b2_clothes
+- Architecture: Segformer (Semantic Segmentation)
+- License: MIT (Segformer) + Apache 2.0 (Transformers)
+
+Dependencies:
+- Transformers (Hugging Face) - Apache 2.0 License
+- PyTorch - BSD License
+- Segformer - MIT License
+
+Author: Loomi Team
+License: MIT
+Copyright: (c) 2025 Loomi Team
+"""
+
 import hashlib
 import time
 from transformers import SegformerImageProcessor, AutoModelForSemanticSegmentation

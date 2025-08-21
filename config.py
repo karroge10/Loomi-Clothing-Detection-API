@@ -9,7 +9,8 @@ class APIConfig:
     # API Settings
     title: str = "Loomi Clothing Detection API"
     description: str = "AI-powered clothing analysis and segmentation API"
-    version: str = "2.0.0"
+    version: str = "1.1.0"
+    copyright: str = "Copyright (c) 2025 Loomi Team"
     
     # Server Settings
     host: str = "0.0.0.0"

@@ -40,7 +40,7 @@ logger.info("🔧 CPU optimized for free tier (4 threads)")
 app = FastAPI(
     title="Loomi Clothing Detection API", 
     description="AI-powered clothing analysis and segmentation API",
-    version="1.0.0"
+    version="1.1.0"
 )
 
 # CORS middleware

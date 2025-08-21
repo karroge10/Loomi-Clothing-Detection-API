@@ -97,6 +97,34 @@ uvicorn main:app --host 0.0.0.0 --port 7860
 3. Make your changes
 4. Submit a pull request
 
+## 📚 Models and Technologies
+
+### **Core ML Model:**
+- **Segformer B2 for Clothing Segmentation** - `mattmdjaga/segformer_b2_clothes`
+  - Pre-trained model specifically designed for clothing and fashion item detection
+  - Based on the Segformer architecture for semantic segmentation
+
+### **Key Libraries and Licenses:**
+- **Transformers (Hugging Face)** - Apache 2.0 License
+- **PyTorch** - BSD License
+- **Segformer** - MIT License  
+- **Rembg** - MIT License (background removal)
+- **FastAPI** - MIT License
+- **Pillow (PIL)** - HPND License
+- **NumPy** - BSD License
+- **scikit-learn** - BSD License
+
+### **Model Capabilities:**
+The model can detect and segment 18 different categories:
+- Background, Hat, Hair, Sunglasses, Upper-clothes, Skirt, Pants, Dress, Belt
+- Left/Right-shoe, Face, Left/Right-leg, Left/Right-arm, Bag, Scarf
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+**Note:** While this project is MIT licensed, it uses pre-trained models and libraries with their own licenses. Please ensure compliance with all respective licenses when using this API.
+
 ---
 
 **Made with ❤️ by the Loomi Team**
