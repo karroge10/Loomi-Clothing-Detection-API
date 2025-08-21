@@ -17,25 +17,25 @@ AI-powered clothing analysis and segmentation API, optimized for Hugging Face Sp
 
 - **🧠 AI-Powered**: Uses Segformer model for clothing detection
 - **🖼️ Image Processing**: Background removal and dominant color detection
-- **⚡ Fast**: Optimized for single-request processing
+- **⚡ Fast**: Optimized for single-request processing with automatic caching
 - **🔧 HF Optimized**: Built specifically for Hugging Face Spaces
 
 ## 🚀 Quick Start
 
 ### API Endpoints
 
-- `GET /` - API overview
+- `GET /` - API overview and documentation
 - `GET /health` - System health and status
 - `GET /performance` - Performance statistics and cache info
 - `POST /detect` - Detect clothing types with segmentation data
-- `POST /analyze` - Analyze selected clothing using segmentation data
+- `POST /analyze` - Upload same image for fast analysis using cached data
 
 ### Usage Example
 
 ```python
 import requests
 
-# Upload image for clothing detection
+# Step 1: Upload image for clothing detection
 with open('image.jpg', 'rb') as f:
     response = requests.post(
         'https://your-hf-space.hf.space/detect',
@@ -44,25 +44,23 @@ with open('image.jpg', 'rb') as f:
     result = response.json()
     print(result)
     
-    # Use segmentation data for analysis
-    if 'segmentation_data' in result:
-        analyze_response = requests.post(
-            'https://your-hf-space.hf.space/analyze',
-            json={
-                'segmentation_data': result['segmentation_data'],
-                'selected_clothing': 'shirt'
-            }
-        )
-        analysis = analyze_response.json()
-        print(analysis)
+# Step 2: Upload same image for instant analysis (uses cached data)
+with open('image.jpg', 'rb') as f:
+    analyze_response = requests.post(
+        'https://your-hf-space.hf.space/analyze',
+        files={'file': f},
+        data={'selected_clothing': 'shirt'}  # Optional: specify clothing type
+    )
+    analysis = analyze_response.json()
+    print(analysis)
 ```
 
 ## 🏗️ Architecture
 
 - **FastAPI**: Modern, fast web framework
-- **Efficient Processing**: Optimized for single requests
+- **Efficient Processing**: Optimized for single requests with smart caching
 - **Model Management**: Efficient ML model loading
-- **Caching**: Smart caching for repeated images
+- **Automatic Caching**: Smart caching for repeated images and segmentation data
 
 ## 🔧 Configuration
 
