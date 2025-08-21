@@ -16,9 +16,9 @@ AI-powered clothing analysis and segmentation API, optimized for Hugging Face Sp
 ## ⚠️ **Important Note for Hugging Face Demo**
 
 **This is currently a demo version on Hugging Face Spaces with limitations:**
-- **Only 1 request at a time** (Hugging Face Spaces restriction)
+- **Sequential processing** - Multiple requests are accepted but queue up and wait for the model to finish the previous request
 - **If you see "offline" status** → wait until current request completes
-- **Try again in a few minutes** if the Space appears busy
+- **Requests will be processed in order** - your request will be queued and processed when ready
 - **For production use** → deploy to your own server with higher concurrency
 
 ## ✨ Features

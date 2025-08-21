@@ -101,9 +101,9 @@ def read_root():
                 <h3>⚠️ Important Note</h3>
                 <p><strong>This is a demo version on Hugging Face Spaces with limitations:</strong></p>
                 <ul>
-                    <li><strong>Only 1 request at a time</strong> (Hugging Face Spaces restriction)</li>
+                    <li><strong>Sequential processing</strong> - Multiple requests are accepted but queue up and wait for the model to finish the previous request</li>
                     <li><strong>If you see "offline" status</strong> → wait until current request completes</li>
-                    <li><strong>Try again in a few minutes</strong> if the Space appears busy</li>
+                    <li><strong>Requests will be processed in order</strong> - your request will be queued and processed when ready</li>
                     <li><strong>For production use</strong> → deploy to your own server with higher concurrency</li>
                 </ul>
             </div>
