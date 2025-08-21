@@ -1,10 +1,12 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import logging
 from typing import Optional
 from pydantic import BaseModel
 import traceback
+import os
 
 # Import our modules
 from config import config
@@ -43,6 +45,9 @@ app = FastAPI(
     version="1.1.0"
 )
 
+# Mount static files
+app.mount("/static", StaticFiles(directory="."), name="static")
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -69,11 +74,52 @@ async def global_exception_handler(request, exc: Exception):
         }
     )
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 def read_root():
+    """Serve the demo HTML interface instead of raw JSON."""
+    try:
+        # Read and return the demo.html file
+        with open("demo.html", "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        # Fallback to JSON if demo.html not found
+        return {
+            "name": "Loomi Clothing Detection API",
+            "version": "1.1.0",
+            "status": "running",
+            "endpoints": [
+                "/detect",           # Main endpoint for clothing detection
+                "/analyze",          # Analysis with data reuse
+                "/health",           # Health check
+                "/performance"       # Performance statistics
+            ],
+            "docs": "/docs",
+            "workflow": {
+                "step1": "POST /detect - upload image and get clothing types with segmentation",
+                "step2": "POST /analyze - analyze selected clothing type (remove background, get color)"
+            },
+            "optimization_tips": [
+                "Use /detect to get segmentation data",
+                "Then use /analyze with this data for fast analysis",
+                "This avoids re-running the ML model"
+            ]
+        }
+
+@app.get("/demo", response_class=HTMLResponse)
+def serve_demo():
+    """Serve the demo HTML interface."""
+    try:
+        with open("demo.html", "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        return HTMLResponse(content="<h1>Demo not found</h1><p>demo.html file is missing.</p>")
+
+@app.get("/api", response_class=JSONResponse)
+def api_info():
+    """API information endpoint - returns JSON data."""
     return {
         "name": "Loomi Clothing Detection API",
-        "version": "1.0.0",
+        "version": "1.1.0",
         "status": "running",
         "endpoints": [
             "/detect",           # Main endpoint for clothing detection
